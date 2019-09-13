@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -520,7 +520,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 		return true;
 	}
 
-	if(!getManager()->getPowered())
+	if(!getManager()->getPowered(adapterAddress))
 	{
 		return true;
 	}
@@ -534,7 +534,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	if(role.length() > 0 && getManager()->isRoleEnable(role))
+	if(role.length() > 0 && getManager()->isRoleEnable(adapterAddress, role))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_ENABLED);
 		return true;
@@ -586,7 +586,6 @@ bool BluetoothProfileService::disable(LSMessage &message)
 {
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
-	std::string adapterAddress;
 	int parseError = 0;
 
 	if (!mImpl)
@@ -607,6 +606,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 		return true;
 	}
 
+	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 	{
 		return true;
@@ -617,7 +617,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 	{
 		role = convertToLower(requestObj["role"].asString());
 	}
-	if(role.length() > 0 && !getManager()->isRoleEnable(role))
+	if(role.length() > 0 && !getManager()->isRoleEnable(adapterAddress, role))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_ENABLED);
 		return true;

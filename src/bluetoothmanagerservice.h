@@ -32,6 +32,7 @@ class BluetoothProfileService;
 class BluetoothDevice;
 class BluetoothServiceClassInfo;
 class BluetoothGattAncsProfile;
+class BluetoothManagerAdapter;
 
 namespace pbnjson
 {
@@ -56,10 +57,27 @@ typedef struct
 	AdvertiseSettings settings;
 } AdvertiserInfo;
 
+class AdapterInfo
+{
+public:
+	BluetoothAdapter* adapter;
+	std::string name;
+	std::string stackName;
+	std::string stackVersion;
+	std::string firmwareVersion;
+	std::string address;
+	uint32_t discoveryTimeout;
+	bool powered;
+	bool discoverable;
+	bool discovering;
+	uint32_t discoverableTimeout;
+	uint32_t classOfDevice;
+	BluetoothPairState pairState;
+};
+
 class BluetoothManagerService :
 		public LS::Handle,
-		public BluetoothSILStatusObserver,
-		public BluetoothAdapterStatusObserver
+		public BluetoothSILStatusObserver
 {
 public:
 	BluetoothManagerService();
@@ -67,54 +85,30 @@ public:
 
 	//Observer callbacks
 	void adaptersChanged();
-	void adapterStateChanged(bool powered);
-	void adapterHciTimeoutOccurred();
-	void discoveryStateChanged(bool active);
-	void adapterPropertiesChanged(BluetoothPropertiesList properties);
 	void adapterKeepAliveStateChanged(bool enabled);
-	void deviceFound(BluetoothPropertiesList properties);
-	void deviceFound(const std::string &address, BluetoothPropertiesList properties);
-	void deviceRemoved(const std::string &address);
-	void devicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties);
 
-	/*
-	 * These will be deprecated if stack is ready to support scanId.
-	 */
-	void leDeviceFound(const std::string &address, BluetoothPropertiesList properties);
-	void leDeviceRemoved(const std::string &address);
-	void leDevicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties);
-
-	void leDeviceFoundByScanId(uint32_t scanId, BluetoothPropertiesList properties);
 	void leDeviceRemovedByScanId(uint32_t scanId, const std::string &address);
 	void leDevicePropertiesChangedByScanId(uint32_t scanId, const std::string &address, BluetoothPropertiesList properties);
 
-	void deviceLinkKeyCreated(const std::string &address, BluetoothLinkKey LinkKey);
-	void deviceLinkKeyDestroyed(const std::string &address, BluetoothLinkKey LinkKey);
-	void requestPairingSecret(const std::string &address, BluetoothPairingSecretType type);
-	void displayPairingSecret(const std::string &address, const std::string &pin);
-	void displayPairingSecret(const std::string &address, BluetoothPasskey passkey);
-	void displayPairingConfirmation(const std::string &address, BluetoothPasskey passkey);
-	void pairingCanceled();
 	void leConnectionRequest(const std::string &address, bool state);
 	void requestReset();
 
 	bool isDefaultAdapterAvailable() const;
-	bool isDeviceAvailable(const std::string &address) const;
 	BluetoothAdapter* getDefaultAdapter() const;
+	bool isDeviceAvailable(const std::string &address) const;
 	std::string getAddress() const;
 
 	void initializeProfiles();
 	void resetProfiles();
 
+	BluetoothManagerAdapter* findAdapterInfo(const std::string &address) const;
 	BluetoothDevice* findDevice(const std::string &address) const;
-	BluetoothDevice* findLeDevice(const std::string &address) const;
-	BluetoothLinkKey findLinkKey(const std::string &address) const;
-	bool getPowered();
+	bool getPowered(const std::string &address);
 	bool isAdapterAvailable(const std::string &address);
 	bool isRequestedAdapterAvailable(LS::Message &request, const pbnjson::JValue &requestObj, std::string &adapterAddress);
 	bool getAdvertisingState();
 	void setAdvertisingState(bool advertising);
-	bool isRoleEnable(const std::string &role);
+	bool isRoleEnable(const std::string &address, const std::string &role);
 	std::string getMessageOwner(LSMessage *message);
 	int getAdvSize(AdvertiseData advData, bool flagRequired);
 
@@ -157,56 +151,37 @@ private:
 #endif
 
 	void appendCurrentStatus(pbnjson::JValue &object);
-	void appendFilteringDevices(std::string senderName, pbnjson::JValue &object);
-	void appendDevices(pbnjson::JValue &object);
-	void appendLeDevices(pbnjson::JValue &object);
-	void appendLeDevicesByScanId(pbnjson::JValue &object, uint32_t scanId);
-	void appendSupportedServiceClasses(pbnjson::JValue &object, const std::vector<BluetoothServiceClassInfo> &supportedProfiles);
-	void appendConnectedProfiles(pbnjson::JValue &object, const std::string deviceAddress);
+	void appendCurrentStatusForMultipleAdapters(pbnjson::JValue &object);
 	void appendAvailableStatus(pbnjson::JValue &object);
-	void appendManufacturerData(pbnjson::JValue &object, const std::vector<uint8_t> manufacturerData);
-	void appendScanRecord(pbnjson::JValue &object, const std::vector<uint8_t> scanRecord);
 
 	void notifySubscriberLeDevicesChanged();
 	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId);
 	void notifySubscribersAboutStateChange();
-	void notifySubscribersFilteredDevicesChanged();
-	void notifySubscribersDevicesChanged();
 	void notifySubscribersAdvertisingChanged(std::string adapterAddress);
 	void notifySubscribersAdaptersChanged();
 
-	void handleStatePropertiesSet(BluetoothPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error);
 	void handleDeviceStatePropertiesSet(BluetoothPropertiesList properties, BluetoothDevice *device, LS::Message &request, const std::string &adapterAddress, BluetoothError error);
 
-	void updateFromAdapterProperties(const BluetoothPropertiesList &properties);
+	void updateFromAdapterAddressForQueryAvailable(BluetoothAdapter *adapter, const BluetoothProperty &property);
 	void assignDefaultAdapter();
 
-	void updateSupportedServiceClasses(const std::vector<std::string> uuids);
+	BluetoothAdapter* getAdapter(const std::string &address);
 
 	bool isServiceClassEnabled(const std::string& serviceClass);
 
 	void createProfiles();
 
-	void beginIncomingPair(const std::string &address);
-	void abortPairing(bool incoming);
-
-	bool notifyPairingListenerDropped(bool incoming);
-	void notifyStartScanListenerDropped(uint32_t scanId);
 
 	bool notifyAdvertisingDropped(uint8_t advertiserId);
 	bool notifyAdvertisingDisabled(uint8_t advertiserId);
 
 	void postToClient(LSMessage *message, pbnjson::JValue &object);
 
-	void startPairing(BluetoothDevice *device);
-	void stopPairing();
-
-	bool setPairableState(bool value);
-	void cancelIncomingPairingSubscription();
-	bool getDiscoveringState() const {return mDiscovering; }
+	bool setPairableState(const std::string &adapterAddress, bool value);
+	void cancelIncomingPairingSubscription(const std::string &adapterAddress);
 
 	bool pairCallback (BluetoothError error);
-	void cancelDiscoveryCallback(BluetoothDevice *device, BluetoothError error);
+	void cancelDiscoveryCallback(const std::string &adapterAddress, BluetoothDevice *device, BluetoothError error);
 
 	//BLE
 	bool configureAdvertisement(LSMessage &message);
@@ -216,52 +191,35 @@ private:
 	bool stopAdvertising(LSMessage &message);
 	bool getAdvStatus(LSMessage &message);
 	bool startScan(LSMessage &message);
+	std::vector<BluetoothProfileService*>& getProfiles() { return mProfiles; }
+	BluetoothPairingIOCapability getIOPairingCapability() { return mPairingIOCapability; }
+
 private:
 	std::vector<BluetoothProfileService*> mProfiles;
-	std::string mName;
 	std::string mAddress;
-	std::string mStackName;
-	std::string mStackVersion;
-	std::string mFirmwareVersion;
-	bool mPowered;
 	bool mAdvertising;
-	bool mDiscovering;
 	bool mWoBleEnabled;
 	bool mKeepAliveEnabled;
 	uint32_t mKeepAliveInterval;
-	uint32_t mDiscoveryTimeout;
-	bool mDiscoverable;
-	uint32_t mDiscoverableTimeout;
-	uint32_t mClassOfDevice;
 	BluetoothSIL *mSil;
 	BluetoothAdapter *mDefaultAdapter;
-	std::unordered_map<std::string, BluetoothDevice*> mDevices;
-	std::unordered_map<std::string, BluetoothDevice*> mLeDevices;
-	std::unordered_map<std::string, BluetoothLinkKey> mLinkKeys;
-	std::vector<BluetoothServiceClassInfo> mSupportedServiceClasses;
+	std::vector<BluetoothAdapter*> mAdapters;
+	std::unordered_map<std::string, BluetoothManagerAdapter*> mAdaptersInfo;
 	std::vector<std::string> mEnabledServiceClasses;
 	BluetoothWoBleTriggerDeviceList mWoBleTriggerDevices;
-	BluetoothPairState mPairState;
 	BluetoothPairingIOCapability mPairingIOCapability;
 
-	LSUtils::ClientWatch *mOutgoingPairingWatch;
-	LSUtils::ClientWatch *mIncomingPairingWatch;
 	LSUtils::ClientWatch *mAdvertisingWatch;
 
 	std::unordered_map<uint8_t, AdvertiserInfo*> mAdvertisers;
-	std::unordered_map<std::string, int32_t> mFilterClassOfDevices;
-	std::unordered_map<std::string, std::string> mFilterUuids;
-	std::unordered_map<uint32_t, std::unordered_map<std::string, BluetoothDevice*>> mLeDevicesByScanId;
 
 	LS::SubscriptionPoint mGetStatusSubscriptions;
 	LS::SubscriptionPoint mGetAdvStatusSubscriptions;
-	LS::SubscriptionPoint mGetDevicesSubscriptions;
 	LS::SubscriptionPoint mQueryAvailableSubscriptions;
 	LS::SubscriptionPoint mGetKeepAliveStatusSubscriptions;
 
-	std::unordered_map<std::string, LSUtils::ClientWatch*> mGetDevicesWatches;
-	std::unordered_map<uint32_t, LSUtils::ClientWatch*> mStartScanWatches;
 	BluetoothGattAncsProfile *mGattAnsc;
+	friend class BluetoothManagerAdapter;
 };
 
 #endif

@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1699,17 +1699,6 @@ void BluetoothAvrcpProfileService::supportedNotificationEventsReceived(const Blu
 bool BluetoothAvrcpProfileService::prepareAwaitRequest(LS::Message &request, pbnjson::JValue &requestObj)
 {
 	int parseError = 0;
-	if (!getManager()->getPowered())
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_TURNED_OFF);
-		return false;
-	}
-
-	if (!getManager()->getDefaultAdapter())
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return false;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP_WITH_VAL_1(subscribe, boolean, true),
 		PROP(adapterAddress, string)) REQUIRED_1(subscribe));
@@ -1723,6 +1712,16 @@ bool BluetoothAvrcpProfileService::prepareAwaitRequest(LS::Message &request, pbn
 		else
 			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
 
+		return false;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return false;
+
+	if (!getManager()->getPowered(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_TURNED_OFF);
 		return false;
 	}
 
