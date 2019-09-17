@@ -622,6 +622,7 @@ BluetoothAdapter* BluetoothManagerService::getAdapter(const std::string &address
 			return it->second->getAdapter();
 		}
 	}
+	return nullptr;
 }
 bool BluetoothManagerService::setPairableState(const std::string &adapterAddress, bool value)
 {
