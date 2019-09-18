@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,6 +82,7 @@ public:
 	~BluetoothA2dpProfileService();
 
 	void initialize();
+	void initialize(const std::string &adapterAddress);
 	bool startStreaming(LSMessage &message);
 	bool stopStreaming(LSMessage &message);
 	bool getAudioPath(LSMessage &message);
@@ -89,6 +90,7 @@ public:
 	bool getCodecConfiguration(LSMessage &message);
 
 	void stateChanged(std::string address, BluetoothA2dpProfileState state);
+	void stateChanged(const std::string adapterAddress, const std::string address, BluetoothA2dpProfileState state);
 	void audioSocketCreated(const std::string &address, const std::string &path, BluetoothA2dpAudioSocketType type, bool isIn);
 	void audioSocketDestroyed(const std::string &address, const std::string &path, BluetoothA2dpAudioSocketType type, bool isIn);
 	void sbcConfiguraionChanged(const std::string &address, const BluetoothSbcConfiguration &sbcConfiguration);
@@ -113,12 +115,18 @@ private:
 	int aptxSamplingFrequencyEnumToInteger(BluetoothAptxConfiguration::SampleFrequency sampleFrequency);
 	std::string aptxChannelModeEnumToString(BluetoothAptxConfiguration::ChannelMode channelMode);
 
+	bool isDevicePlaying(const std::string &adapterAddress, const std::string &address);
+	void markDeviceAsPlaying(const std::string &adapterAddress, const std::string &address);
+	void markDeviceAsNotPlaying(const std::string &adapterAddress, const std::string &address);
+
 private:
 	std::vector<std::string> mPlayingDevices;
 	AudioSocketInfo *mAudioSocketInfo;
 	SbcConfigurationInfo *mSbcConfigurationInfo;
 	AptxConfigurationInfo *mAptxConfigurationInfo;
 	std::unordered_map<std::string, LSUtils::ClientWatch*> mGetCodecConfigurationWatches;
+
+	std::map<std::string, std::vector<std::string>> mPlayingDevicesForMultipleAdapters;
 };
 
 class A2DPAudioPathCheckTimeout {

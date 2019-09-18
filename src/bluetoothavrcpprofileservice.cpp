@@ -121,6 +121,14 @@ void BluetoothAvrcpProfileService::initialize()
 		getImpl<BluetoothAvrcpProfile>()->registerObserver(this);
 }
 
+void BluetoothAvrcpProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	if (findImpl(adapterAddress))
+		getImpl<BluetoothAvrcpProfile>(adapterAddress)->registerObserver(this);
+}
+
 bool BluetoothAvrcpProfileService::awaitMediaMetaDataRequest(LSMessage &message)
 {
 	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);

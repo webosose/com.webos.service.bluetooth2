@@ -95,11 +95,14 @@ public:
 
 	bool isDefaultAdapterAvailable() const;
 	BluetoothAdapter* getDefaultAdapter() const;
+	BluetoothAdapter* getAdapter(const std::string &adapterAddress);
 	bool isDeviceAvailable(const std::string &address) const;
 	std::string getAddress() const;
 
 	void initializeProfiles();
+	void initializeProfiles(BluetoothManagerAdapter *adapter);
 	void resetProfiles();
+	void resetProfiles(const std::string &adapterAddress);
 
 	BluetoothManagerAdapter* findAdapterInfo(const std::string &address) const;
 	BluetoothDevice* findDevice(const std::string &address) const;
@@ -164,8 +167,6 @@ private:
 
 	void updateFromAdapterAddressForQueryAvailable(BluetoothAdapter *adapter, const BluetoothProperty &property);
 	void assignDefaultAdapter();
-
-	BluetoothAdapter* getAdapter(const std::string &address);
 
 	bool isServiceClassEnabled(const std::string& serviceClass);
 

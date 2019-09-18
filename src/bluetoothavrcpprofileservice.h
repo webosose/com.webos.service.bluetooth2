@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +52,7 @@ public:
 	~BluetoothAvrcpProfileService();
 
 	void initialize();
+	void initialize(const std::string &adapterAddress);
 	bool awaitMediaMetaDataRequest(LSMessage &message);
 	bool supplyMediaMetaData(LSMessage &message);
 	bool awaitMediaPlayStatusRequest(LSMessage &message);

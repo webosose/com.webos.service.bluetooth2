@@ -466,11 +466,27 @@ void BluetoothManagerService::initializeProfiles()
 	}
 }
 
+void BluetoothManagerService::initializeProfiles(BluetoothManagerAdapter *adapter)
+{
+	for (auto profile : mProfiles)
+	{
+		profile->initialize(adapter->getAddress());
+	}
+}
+
 void BluetoothManagerService::resetProfiles()
 {
 	for (auto profile : mProfiles)
 	{
 		profile->reset();
+	}
+}
+
+void BluetoothManagerService::resetProfiles(const std::string &adapterAddress)
+{
+	for (auto profile : mProfiles)
+	{
+		profile->reset(adapterAddress);
 	}
 }
 
@@ -487,7 +503,6 @@ void BluetoothManagerService::assignDefaultAdapter()
 		return;
 	}
 
-	initializeProfiles();
 
 	BT_DEBUG("Updating properties from default adapter");
 	mDefaultAdapter->getAdapterProperties([this](BluetoothError error, const BluetoothPropertiesList &properties) {
@@ -545,8 +560,10 @@ void BluetoothManagerService::updateFromAdapterAddressForQueryAvailable(Bluetoot
 	btmngrAdapter->setAdapter(adapter);
 
 	adapter->registerObserver(btmngrAdapter);
-
 	mAdaptersInfo.insert(std::pair<std::string, BluetoothManagerAdapter*>(address, btmngrAdapter));
+
+	resetProfiles(address);
+	initializeProfiles(btmngrAdapter);
 
 	if (mPairingIOCapability == BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT)
 		setPairableState(address, true);
@@ -624,6 +641,7 @@ BluetoothAdapter* BluetoothManagerService::getAdapter(const std::string &address
 	}
 	return nullptr;
 }
+
 bool BluetoothManagerService::setPairableState(const std::string &adapterAddress, bool value)
 {
 	BT_DEBUG("Setting pairable to %d", value);

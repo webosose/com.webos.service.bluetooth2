@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,6 +64,14 @@ void BluetoothA2dpProfileService::initialize()
 		getImpl<BluetoothA2dpProfile>()->registerObserver(this);
 }
 
+void BluetoothA2dpProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	if (findImpl(adapterAddress))
+		getImpl<BluetoothA2dpProfile>(adapterAddress)->registerObserver(this);
+}
+
 void BluetoothA2dpProfileService::stateChanged(std::string address, BluetoothA2dpProfileState state)
 {
 	BT_INFO("A2DP", 0, "stateChanged : address %s, state %d", address.c_str(), state);
@@ -85,6 +93,23 @@ void BluetoothA2dpProfileService::stateChanged(std::string address, BluetoothA2d
 		return;
 
 	notifyStatusSubscribers(getManager()->getAddress(), address, true);
+}
+
+void BluetoothA2dpProfileService::stateChanged(const std::string adapterAddress, const std::string address, BluetoothA2dpProfileState state)
+{
+	BT_INFO("A2DP", 0, "stateChanged : address %s, state %d", address.c_str(), state);
+
+	if (!isDeviceConnected(adapterAddress, address))
+		return;
+
+	if (PLAYING == state && !isDevicePlaying(adapterAddress, address))
+		markDeviceAsPlaying(adapterAddress, address);
+	else if (NOT_PLAYING == state && isDevicePlaying(adapterAddress, address))
+		markDeviceAsNotPlaying(adapterAddress, address);
+	else
+		return;
+
+	notifyStatusSubscribers(adapterAddress, address, true);
 }
 
 void BluetoothA2dpProfileService::audioSocketCreated(const std::string &address, const std::string &path, BluetoothA2dpAudioSocketType type, bool isIn)
@@ -227,13 +252,15 @@ pbnjson::JValue BluetoothA2dpProfileService::buildGetStatusResp(bool connected, 
 	appendCommonProfileStatus(responseObj, connected, connecting, subscribed,
                                   returnValue, adapterAddress, deviceAddress);
 
-	bool isDevicePlaying = false;
+	bool playing = false;
 
-	auto deviceIterator = std::find(mPlayingDevices.begin(), mPlayingDevices.end(), deviceAddress);
-	if (deviceIterator != mPlayingDevices.end())
-		isDevicePlaying = true;
+	if (!connected)
+		markDeviceAsNotPlaying(adapterAddress, deviceAddress);
 
-	responseObj.put("playing", isDevicePlaying);
+	if (isDevicePlaying(adapterAddress, deviceAddress))
+		playing = true;
+
+	responseObj.put("playing", playing);
 
 	return responseObj;
 }
@@ -245,12 +272,6 @@ bool BluetoothA2dpProfileService::startStreaming(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothA2dpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string)) REQUIRED_1(address));
 
@@ -266,29 +287,41 @@ bool BluetoothA2dpProfileService::startStreaming(LSMessage &message)
 		return true;
 	}
 
+	std::string adapterAddress;
+	if (requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = getManager()->getAdapter(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return true;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothA2dpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
 		deviceAddress = requestObj["address"].asString();
-		if (!getManager()->isDeviceAvailable(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-			return true;
-		}
 
-		if (!isDeviceConnected(deviceAddress))
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
 		}
 	}
 
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
 
 	BT_INFO("A2DP", 0, "Service called SIL API : startStreaming");
-	BluetoothError error = getImpl<BluetoothA2dpProfile>()->startStreaming(deviceAddress);
+	BluetoothError error = getImpl<BluetoothA2dpProfile>(adapterAddress)->startStreaming(deviceAddress);
 	BT_INFO("A2DP", 0, "Return of startStreaming is %d", error);
 
 	if (BLUETOOTH_ERROR_NONE != error)
@@ -315,12 +348,6 @@ bool BluetoothA2dpProfileService::stopStreaming(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothA2dpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string)) REQUIRED_1(address));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
@@ -335,29 +362,40 @@ bool BluetoothA2dpProfileService::stopStreaming(LSMessage &message)
 		return true;
 	}
 
+	std::string adapterAddress;
+	if (requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = getManager()->getAdapter(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return true;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothA2dpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
 		deviceAddress = requestObj["address"].asString();
-		if (!getManager()->isDeviceAvailable(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-			return true;
-		}
 
-		if (!isDeviceConnected(deviceAddress))
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
 		}
 	}
 
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
-
 	BT_INFO("A2DP", 0, "Service calls SIL API : stopStreaming");
-	BluetoothError error = getImpl<BluetoothA2dpProfile>()->stopStreaming(deviceAddress);
+	BluetoothError error = getImpl<BluetoothA2dpProfile>(adapterAddress)->stopStreaming(deviceAddress);
 	BT_INFO("A2DP", 0, "Return of stopStreaming is %d", error);
 
 	if (BLUETOOTH_ERROR_NONE != error)
@@ -729,4 +767,43 @@ std::string BluetoothA2dpProfileService::aptxChannelModeEnumToString(BluetoothAp
 		return "stereo";
 	else
 		return "unknown";
+}
+
+bool BluetoothA2dpProfileService::isDevicePlaying(const std::string &adapterAddress, const std::string &address)
+{
+	auto playingDevicesiter = mPlayingDevicesForMultipleAdapters.find(adapterAddress);
+	if (playingDevicesiter == mPlayingDevicesForMultipleAdapters.end())
+		return false;
+
+	return (std::find((playingDevicesiter->second).begin(), (playingDevicesiter->second).end(), address) != (playingDevicesiter->second).end());
+}
+
+void BluetoothA2dpProfileService::markDeviceAsPlaying(const std::string &adapterAddress, const std::string &address)
+{
+	auto playingDevicesiter = mPlayingDevicesForMultipleAdapters.find(adapterAddress);
+	if (playingDevicesiter == mPlayingDevicesForMultipleAdapters.end())
+	{
+		std::vector<std::string> playingDevices;
+		playingDevices.push_back(address);
+
+		mPlayingDevicesForMultipleAdapters.insert(std::pair<std::string, std::vector<std::string>>(adapterAddress, playingDevices));
+		return;
+	}
+
+	if (!isDevicePlaying(adapterAddress, address))
+		(playingDevicesiter->second).push_back(address);
+}
+
+void BluetoothA2dpProfileService::markDeviceAsNotPlaying(const std::string &adapterAddress, const std::string &address)
+{
+	auto playingDevicesiter = mPlayingDevicesForMultipleAdapters.find(adapterAddress);
+	if (playingDevicesiter == mPlayingDevicesForMultipleAdapters.end())
+		return;
+
+	auto deviceIter = std::find((playingDevicesiter->second).begin(), (playingDevicesiter->second).end(), address);
+
+	if (deviceIter == (playingDevicesiter->second).end())
+		return;
+
+	(playingDevicesiter->second).erase(deviceIter);
 }

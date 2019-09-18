@@ -921,7 +921,7 @@ void BluetoothManagerAdapter::appendConnectedProfiles(pbnjson::JValue &object, c
 
 	for (auto profile : mBluetoothManagerService->getProfiles())
 	{
-		if (profile->isDeviceConnected(deviceAddress))
+		if (profile->isDeviceConnected(mAddress, deviceAddress))
 			connectedProfilesObj.append(convertToLower(profile->getName()));
 	}
 
