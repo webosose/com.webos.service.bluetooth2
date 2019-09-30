@@ -74,6 +74,8 @@ public:
 	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &address);
 	void volumeChanged(int volume, const std::string &address);
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus, const std::string &address);
+	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus,
+									const std::string &adapterAddress,const std::string &address);
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address, const std::string &role);
 	void supportedNotificationEventsReceived(const BluetoothAvrcpSupportedNotificationEventList &events, const std::string &address);
 
@@ -108,6 +110,7 @@ private:
 	void parseMediaPlayStatus(const pbnjson::JValue &dataObj, BluetoothMediaPlayStatus *status);
 	void handleReceivePassThroughCommandClientDisappeared(const std::string &adapterAddress, const std::string &address);
 	void removeReceivePassThroughCommandWatchForDevice(const std::string &address);
+	void removeReceivePassThroughCommandWatchForDevice(const std::string &adapterAddress, const std::string &address);
 	void handleGetSupportedNotificationEventsClientDisappeared(const std::string &adapterAddress, const std::string &address);
 	void removeGetSupportedNotificationEventsWatchForDevice(const std::string &address);
 
@@ -158,6 +161,7 @@ private:
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaPlayStatusSubscriptions;
 
 	LS::SubscriptionPoint mGetPlayerApplicationSettingsSubscriptions;
+	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mReceivePassThroughCommandWatchesForMultipleAdapters;
 
 };
 

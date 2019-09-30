@@ -441,6 +441,13 @@ void BluetoothManagerService::adaptersChanged()
 
 	assignDefaultAdapter();
 
+	for (auto it : mAdaptersInfo)
+	{
+		delete it.second;
+	}
+
+	mAdaptersInfo.clear();
+
 	mAdapters = mSil->getAdapters();
 
 	for (auto adapter : mAdapters)
