@@ -443,6 +443,30 @@ void BluetoothManagerService::adaptersChanged()
 
 	mAdapters = mSil->getAdapters();
 
+	for (auto it = mAdaptersInfo.begin(); it != mAdaptersInfo.end(); )
+	{
+		bool found = false;
+		for (auto silAdapter : mAdapters)
+		{
+			if (silAdapter == it->second->getAdapter())
+			{
+				found = true;
+				 break;
+			}
+		}
+
+		if (!found)
+		{
+			BT_INFO("MANAGER_SERVICE", 0, "adaptersChanged erasing adapter [%s] from list", it->first.c_str());
+			delete it->second;
+			it = mAdaptersInfo.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
 	for (auto adapter : mAdapters)
 	{
 		BT_DEBUG("Updating properties from adapters");
