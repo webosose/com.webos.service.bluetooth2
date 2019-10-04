@@ -966,12 +966,6 @@ bool BluetoothAvrcpProfileService::setAbsoluteVolume(LSMessage &message)
 	BluetoothPlayerApplicationSettingsPropertiesList propertiesToChange;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothAvrcpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string),
 		PROP(volume, integer), PROP(adapterAddress, string))
 		REQUIRED_2(address, volume));
@@ -994,17 +988,18 @@ bool BluetoothAvrcpProfileService::setAbsoluteVolume(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	auto adapter = getManager()->getAdapter(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return true;
+	}
+
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
 		deviceAddress = requestObj["address"].asString();
-		if (!getManager()->isDeviceAvailable(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-			return true;
-		}
-
-		if (!isDeviceConnected(deviceAddress))
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
@@ -1023,7 +1018,7 @@ bool BluetoothAvrcpProfileService::setAbsoluteVolume(LSMessage &message)
 		}
 	}
 
-	BluetoothError error = getImpl<BluetoothAvrcpProfile>()->setAbsoluteVolume(deviceAddress, volume);
+	BluetoothError error = getImpl<BluetoothAvrcpProfile>(adapterAddress)->setAbsoluteVolume(deviceAddress, volume);
 
 	if (BLUETOOTH_ERROR_NONE != error)
 	{
@@ -1049,12 +1044,6 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothAvrcpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string), PROP(address, string),
                                                 PROP_WITH_VAL_1(subscribe, boolean, true))REQUIRED_1(subscribe));
 
@@ -1074,17 +1063,18 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	if (!getImpl<BluetoothAvrcpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
 		deviceAddress = requestObj["address"].asString();
-		if (!getManager()->isDeviceAvailable(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-			return true;
-		}
 
-		if (!isDeviceConnected(deviceAddress))
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
@@ -1097,16 +1087,28 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 	{
 		LS::SubscriptionPoint *subscriptionPoint = 0;
 
-		auto subscriptionIter = mGetRemoteVolumeSubscriptions.find(deviceAddress);
-		if (subscriptionIter == mGetRemoteVolumeSubscriptions.end())
+		auto subscriptionIter = mGetRemoteVolumeSubscriptionsForMultipleAdapters.find(adapterAddress);
+		if (subscriptionIter == mGetRemoteVolumeSubscriptionsForMultipleAdapters.end())
 		{
+			std::map<std::string, LS::SubscriptionPoint*> getRemoteVolumeSubscriptionPoints;
 			subscriptionPoint = new LS::SubscriptionPoint;
 			subscriptionPoint->setServiceHandle(getManager());
-			mGetRemoteVolumeSubscriptions.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+			getRemoteVolumeSubscriptionPoints.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+			mGetRemoteVolumeSubscriptionsForMultipleAdapters.insert(std::pair<std::string,  std::map<std::string, LS::SubscriptionPoint*>>(adapterAddress , getRemoteVolumeSubscriptionPoints));
 		}
 		else
 		{
-			subscriptionPoint = subscriptionIter->second;
+			auto subscriptionDeviceIter = (subscriptionIter->second).find(deviceAddress);
+			if (subscriptionDeviceIter == (subscriptionIter->second).end())
+			{
+				subscriptionPoint = new LS::SubscriptionPoint;
+				subscriptionPoint->setServiceHandle(getManager());
+				(subscriptionIter->second).insert(std::pair<std::string,  LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+			}
+			else
+			{
+			       subscriptionPoint = subscriptionDeviceIter->second;
+			}
 		}
 
 		subscriptionPoint->subscribe(request);
@@ -1647,23 +1649,29 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
 }
 
-void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &address)
+void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &adapterAddress ,const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
-	auto subscriptionIter = mGetRemoteVolumeSubscriptions.find(address);
-	if (subscriptionIter == mGetRemoteVolumeSubscriptions.end())
+	auto subscriptionIter = mGetRemoteVolumeSubscriptionsForMultipleAdapters.find(adapterAddress);
+	if (subscriptionIter == mGetRemoteVolumeSubscriptionsForMultipleAdapters.end())
 		return;
+
+
+	auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
+	if (subscriptionDeviceIter == (subscriptionIter->second).end())
+		return;
+
 
 	pbnjson::JValue object = pbnjson::Object();
 
 	object.put("returnValue", true);
 	object.put("subscribed", true);
 	object.put("address", address);
-	object.put("adapterAddress", getManager()->getAddress());
+	object.put("adapterAddress", adapterAddress);
 	object.put("volume", volume);
 
-	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
+	LS::SubscriptionPoint *subscriptionPoint = subscriptionDeviceIter->second;
 	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
 
 }

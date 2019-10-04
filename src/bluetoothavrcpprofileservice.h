@@ -72,7 +72,7 @@ public:
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &address);
 	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &address);
-	void volumeChanged(int volume, const std::string &address);
+	void volumeChanged(int volume, const std::string &adapterAddress, const std::string &address);
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus, const std::string &address);
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus,
 									const std::string &adapterAddress,const std::string &address);
@@ -162,7 +162,7 @@ private:
 
 	LS::SubscriptionPoint mGetPlayerApplicationSettingsSubscriptions;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mReceivePassThroughCommandWatchesForMultipleAdapters;
-
+	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H
