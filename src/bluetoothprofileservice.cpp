@@ -403,7 +403,7 @@ void BluetoothProfileService::connectToStack(LS::Message &request, pbnjson::JVal
 
 			if (error != BLUETOOTH_ERROR_NONE)
 			{
-				LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
+				LSUtils::respondWithError(request, error);
 				LSMessageUnref(request.get());
 
 				markDeviceAsNotConnecting(adapterAddress, address);

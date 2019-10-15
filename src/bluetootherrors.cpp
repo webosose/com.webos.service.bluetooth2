@@ -42,7 +42,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_NOT_ALLOWED, "Performed operation is not allowed"},
 	{BLUETOOTH_ERROR_ABORTED, "Operation was aborted"},
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_ENABLED, "Tethering is already enabled"},
-	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"}
+	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"},
+	{BLUETOOTH_ERROR_ALREADY_CONNECTED_ONE_DEVICE,"One headset already connected to this adapter please check in device/getStatus"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -229,7 +230,7 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_GATT_ADVERTISERID_PARAM_MISSING, "Required 'advertiserId' parameter is not supplied"},
 	{BT_ERR_GATT_READ_DESCRIPTOR_FAIL, "Failed to read descriptor"},
 	{BT_ERR_GATT_INSTANCE_ID_NOT_SUPPORTED, "'instanceId' is not supported"},
-	{BT_ERR_CLIENTID_PARAM_MISSING, "Required 'clientId' parameter is not supplied"},
+	{BT_ERR_CLIENTID_PARAM_MISSING, "Required 'clientId' parameter is not supplied"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
