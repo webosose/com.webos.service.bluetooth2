@@ -117,7 +117,7 @@ BluetoothDevice* BluetoothManagerAdapter::findDevice(const std::string &address)
 	if (deviceIter == mDevices.end())
 	{
 		convertedAddress = convertToUpper(address);
-		auto deviceIter = mDevices.find(convertedAddress);
+		deviceIter = mDevices.find(convertedAddress);
 		if (deviceIter == mDevices.end())
 			return 0;
 	}
@@ -132,7 +132,7 @@ BluetoothDevice* BluetoothManagerAdapter::findLeDevice(const std::string &addres
 	if (deviceIter == mLeDevices.end())
 	{
 		convertedAddress = convertToUpper(address);
-		auto deviceIter = mLeDevices.find(convertedAddress);
+		deviceIter = mLeDevices.find(convertedAddress);
 		if (deviceIter == mLeDevices.end())
 			return 0;
 	}
@@ -147,7 +147,7 @@ BluetoothLinkKey BluetoothManagerAdapter::findLinkKey(const std::string &address
 	if (linkKeyIter == mLinkKeys.end())
 	{
 		convertedAddress = convertToUpper(address);
-		auto linkKeyIter = mLinkKeys.find(convertedAddress);
+		linkKeyIter = mLinkKeys.find(convertedAddress);
 		if (linkKeyIter == mLinkKeys.end())
 			return std::vector<int32_t>();
 	}

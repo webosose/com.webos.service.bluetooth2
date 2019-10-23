@@ -546,7 +546,7 @@ BluetoothManagerAdapter* BluetoothManagerService::findAdapterInfo(const std::str
 	if (adapterInfoIter == mAdaptersInfo.end())
 	{
 		convertedAddress = convertToUpper(address);
-		auto adapterInfoIter = mAdaptersInfo.find(convertedAddress);
+		adapterInfoIter = mAdaptersInfo.find(convertedAddress);
 		if (adapterInfoIter == mAdaptersInfo.end())
 			return 0;
 	}

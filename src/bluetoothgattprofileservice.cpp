@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -2102,7 +2102,7 @@ bool BluetoothGattProfileService::monitorCharacteristic(LSMessage &message)
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	BT_DEBUG("Registering with SIL API for %d characteristic watch list elements", mCharacteristicWatchList.size());
+	BT_DEBUG("Registering with SIL API for %zu characteristic watch list elements", mCharacteristicWatchList.size());
 	for (auto characteristicWatch : mCharacteristicWatchList)
 	{
 		//eliminate the watches that are already registered with SIL API changeCharacteristicWatchStatus()
@@ -2305,7 +2305,7 @@ bool BluetoothGattProfileService::monitorCharacteristics(LSMessage &message)
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	BT_DEBUG("Registering with SIL API for %d characteristic watch list elements", mCharacteristicWatchList.size());
+	BT_DEBUG("Registering with SIL API for %zu characteristic watch list elements", mCharacteristicWatchList.size());
 	for (auto characteristicWatch : mCharacteristicWatchList)
 	{
 		//eliminate the watches that are already registered with SIL API changeCharacteristicWatchStatus()
@@ -2407,7 +2407,7 @@ bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, 
 
 	BluetoothGattCharacteristicList characteristicList = service.getCharacteristics();
 
-	BT_DEBUG("char count %d", characteristicList.size());
+	BT_DEBUG("char count %zu", characteristicList.size());
 
 	for (auto characteristicElement : characteristicList)
 	{
@@ -3002,7 +3002,7 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 		return;
 	}
 
-	BT_DEBUG("Starting to register service %s with %d characteristics",
+	BT_DEBUG("Starting to register service %s with %zu characteristics",
 	              service.getUuid().toString().c_str(),
 	              service.getCharacteristics().size());
 
@@ -3445,7 +3445,7 @@ void BluetoothGattProfileService::readLocalCharacteristics(
 		const BluetoothUuidList &characteristics,
 		BluetoothGattReadCharacteristicsCallback callback)
 {
-	BT_DEBUG("Reading local characteristic (count %d) of service %s",
+	BT_DEBUG("Reading local characteristic (count %zu) of service %s",
 	              characteristics.size(),
 	              service.toString().c_str());
 

@@ -1041,7 +1041,7 @@ BluetoothProfile* BluetoothProfileService::findImpl (const std::string &adapterA
 	if (implIter == mImpls.end())
 	{
 		convertedAddress = convertToUpper(adapterAddress);
-		auto implIter = mImpls.find(convertedAddress);
+		implIter = mImpls.find(convertedAddress);
 		if (implIter == mImpls.end())
 			return 0;
 	}
