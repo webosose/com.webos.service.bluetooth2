@@ -2690,7 +2690,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 	return true;
 }
 
-void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, uint8_t advertiserId, AdvertiserInfo advInfo,
+void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, uint8_t advertiserId, AdvertiserInfo &advInfo,
 		bool isSettingsChanged, bool isAdvDataChanged, bool isScanRspChanged)
 {
 	if(isSettingsChanged)

@@ -1836,7 +1836,7 @@ bool BluetoothGattProfileService::readCharacteristicValues(LSMessage &message)
 	return true;
 }
 
-void BluetoothGattProfileService::handleMonitorCharacteristicClientDropped(MonitorCharacteristicSubscriptionInfo subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch)
+void BluetoothGattProfileService::handleMonitorCharacteristicClientDropped(MonitorCharacteristicSubscriptionInfo &subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch)
 {
 	BT_INFO("BLE", 0, "%s: Monitor client disappeared for device %s", __func__, subscriptionInfo.deviceAddress.c_str());
 	for (auto it = mMonitorCharacteristicSubscriptions.begin() ; it != mMonitorCharacteristicSubscriptions.end(); ++it)
@@ -1888,7 +1888,7 @@ void BluetoothGattProfileService::handleMonitorCharacteristicClientDropped(Monit
 	}
 }
 
-void BluetoothGattProfileService::handleMonitorCharacteristicsClientDropped(MonitorCharacteristicSubscriptionInfo subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch)
+void BluetoothGattProfileService::handleMonitorCharacteristicsClientDropped(MonitorCharacteristicSubscriptionInfo &subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch)
 {
 	BT_INFO("BLE", 0, "%s: Monitor client disappeared for device %s", __func__, subscriptionInfo.deviceAddress.c_str());
 	for (auto it = mMonitorCharacteristicSubscriptions.begin() ; it != mMonitorCharacteristicSubscriptions.end(); ++it)

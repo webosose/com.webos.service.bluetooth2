@@ -138,7 +138,7 @@ private:
 	bool getWoBleStatus(LSMessage &message);
 	bool sendHciCommand(LSMessage &message);
 	bool setAdvertiseData(LSMessage &message, pbnjson::JValue &value, AdvertiseData &data, bool isScanRsp);
-	void updateAdvertiserData(LSMessage *requestMessage, uint8_t advertiserId, AdvertiserInfo advInfo,
+	void updateAdvertiserData(LSMessage *requestMessage, uint8_t advertiserId, AdvertiserInfo &advInfo,
 			bool isSettingsChanged, bool isAdvDataChanged, bool isScanRspChanged);
 	bool setTrace(LSMessage &message);
 	bool getTraceStatus(LSMessage &message);
