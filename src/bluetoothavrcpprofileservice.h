@@ -84,6 +84,8 @@ public:
 	 */
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address);
 
+	void propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
+
 private:
 	class MediaRequest
 	{
@@ -148,6 +150,7 @@ private:
 	std::string mTGRemoteFeatures;
 	std::string mRemoteFeaturesAddress;
 	BluetoothMediaMetaData *mMediaMetaData;
+	std::map<std::string, int> mRemoteVolumes;
 
 	BluetoothAvrcpSupportedNotificationEventList mSupportedNotificationEvents;
 	std::map<uint64_t, MediaRequest*> mMediaMetaDataRequests;

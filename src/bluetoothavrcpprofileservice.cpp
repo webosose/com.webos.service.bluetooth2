@@ -129,6 +129,33 @@ void BluetoothAvrcpProfileService::initialize(const std::string &adapterAddress)
 		getImpl<BluetoothAvrcpProfile>(adapterAddress)->registerObserver(this);
 }
 
+void BluetoothAvrcpProfileService::propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties)
+{
+	BluetoothProfileService::propertiesChanged(adapterAddress, address, properties);
+
+	bool connected = false;
+
+	for (auto prop : properties)
+	{
+		switch (prop.getType())
+		{
+			case BluetoothProperty::Type::CONNECTED:
+				connected = prop.getValue<bool>();
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	if(!connected)
+	{
+		auto it = mRemoteVolumes.find(address);
+		if (it != mRemoteVolumes.end())
+			mRemoteVolumes.erase(it);
+	}
+}
+
 bool BluetoothAvrcpProfileService::awaitMediaMetaDataRequest(LSMessage &message)
 {
 	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
@@ -1123,6 +1150,13 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 	responseObj.put("adapterAddress", adapterAddress);
 	responseObj.put("address", deviceAddress);
 
+
+	if (isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		if (mRemoteVolumes.find(deviceAddress) != mRemoteVolumes.end())
+			responseObj.put("volume", mRemoteVolumes[deviceAddress]);
+	}
+
 	LSUtils::postToClient(request, responseObj);
 
 	return true;
@@ -1652,6 +1686,14 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &adapterAddress ,const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	//Convert to percentage as per API documentation
+	volume = (volume/127.0) * 100;
+
+	if (mRemoteVolumes.find(address) != mRemoteVolumes.end())
+		mRemoteVolumes[address] = volume;
+	else
+		mRemoteVolumes.insert(std::pair<std::string, int>(address, volume));
 
 	auto subscriptionIter = mGetRemoteVolumeSubscriptionsForMultipleAdapters.find(adapterAddress);
 	if (subscriptionIter == mGetRemoteVolumeSubscriptionsForMultipleAdapters.end())
