@@ -77,6 +77,7 @@ public:
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus,
 									const std::string &adapterAddress,const std::string &address);
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address, const std::string &role);
+	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &adapterAddress, const std::string &address, const std::string &role);
 	void supportedNotificationEventsReceived(const BluetoothAvrcpSupportedNotificationEventList &events, const std::string &address);
 
 	/*
@@ -130,7 +131,7 @@ private:
 	void updateFromPlayerApplicationSettingsProperties(const BluetoothPlayerApplicationSettingsPropertiesList &properties);
 
 	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error);
-
+	std::string findRemoteFeatures(const std::string &adapterAddress, const std::string &address);
 
 private:
 	std::string mEqualizer;
@@ -166,6 +167,7 @@ private:
 	LS::SubscriptionPoint mGetPlayerApplicationSettingsSubscriptions;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
+	std::map<std::string, std::map<std::string, std::string>> mTGRemoteFeturesForMultipleAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H
