@@ -561,6 +561,11 @@ BluetoothDevice* BluetoothManagerService::findDevice(const std::string &address)
 	return findAdapterInfo(mAddress)->findDevice(address);
 }
 
+BluetoothDevice* BluetoothManagerService::findDevice(const std::string &adapterAddress, const std::string &address) const
+{
+	return findAdapterInfo(adapterAddress)->findDevice(address);
+}
+
 void BluetoothManagerService::updateFromAdapterAddressForQueryAvailable(BluetoothAdapter *adapter, const BluetoothProperty &property)
 {
 	if (property.getType() != BluetoothProperty::Type::BDADDR)

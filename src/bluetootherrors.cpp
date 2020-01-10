@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -230,7 +230,11 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_GATT_ADVERTISERID_PARAM_MISSING, "Required 'advertiserId' parameter is not supplied"},
 	{BT_ERR_GATT_READ_DESCRIPTOR_FAIL, "Failed to read descriptor"},
 	{BT_ERR_GATT_INSTANCE_ID_NOT_SUPPORTED, "'instanceId' is not supported"},
-	{BT_ERR_CLIENTID_PARAM_MISSING, "Required 'clientId' parameter is not supplied"}
+	{BT_ERR_CLIENTID_PARAM_MISSING, "Required 'clientId' parameter is not supplied"},
+	{BT_ERR_API_NOT_SUPPORTED_BY_STACK, "API not supported by stack"},
+	{BT_ERR_DELAY_REPORTING_ALREADY_ENABLED, "Delay reporting already enabled"},
+	{BT_ERR_DELAY_REPORTING_ALREADY_DISABLED, "Delay reporting already disabled"},
+	{BT_ERR_DELAY_REPORTING_DISABLED, "Delay reporting is  disabled, please enable it to use this api"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)

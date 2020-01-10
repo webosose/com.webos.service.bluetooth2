@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -207,6 +207,10 @@ enum BluetoothErrorCode
 	BT_ERR_CLIENTID_PARAM_MISSING = 283,
 	BT_ERR_BLE_ADV_EXCEED_SIZE_LIMIT = 284,
 	BT_ERR_GATT_INSTANCE_ID_NOT_SUPPORTED = 285,
+	BT_ERR_API_NOT_SUPPORTED_BY_STACK = 286,
+	BT_ERR_DELAY_REPORTING_ALREADY_ENABLED = 287,
+	BT_ERR_DELAY_REPORTING_ALREADY_DISABLED = 288,
+	BT_ERR_DELAY_REPORTING_DISABLED = 289
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode);

@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@
 
 #include <string>
 #include <map>
+#include <memory>
+#include <vector>
 
 #include <bluetooth-sil-api.h>
 #include <luna-service2/lunaservice.hpp>
@@ -88,6 +90,9 @@ public:
 	bool getAudioPath(LSMessage &message);
 	bool setSbcEncoderBitpool(LSMessage &message);
 	bool getCodecConfiguration(LSMessage &message);
+	bool getDelayReportingTime(LSMessage &message);
+	bool enableDelayReporting(LSMessage &message);
+	bool disableDelayReporting(LSMessage &message);
 
 	void stateChanged(std::string address, BluetoothA2dpProfileState state);
 	void stateChanged(const std::string adapterAddress, const std::string address, BluetoothA2dpProfileState state);
@@ -95,6 +100,7 @@ public:
 	void audioSocketDestroyed(const std::string &address, const std::string &path, BluetoothA2dpAudioSocketType type, bool isIn);
 	void sbcConfiguraionChanged(const std::string &address, const BluetoothSbcConfiguration &sbcConfiguration);
 	void aptxConfigurationChanged(const std::string &address, const BluetoothAptxConfiguration &aptxConfiguration);
+	void delayReportChanged(const std::string &adapterAddress, const std::string &address, uint16_t delay);
 
 protected:
 	pbnjson::JValue buildGetStatusResp(bool connected, bool connecting, bool subscribed, bool returnValue,
@@ -127,6 +133,10 @@ private:
 	std::unordered_map<std::string, LSUtils::ClientWatch*> mGetCodecConfigurationWatches;
 
 	std::map<std::string, std::vector<std::string>> mPlayingDevicesForMultipleAdapters;
+
+	typedef std::unordered_map<std::string, std::unique_ptr<LS::SubscriptionPoint>> DeviceSubscriptionMap;
+	std::unordered_map<std::string, DeviceSubscriptionMap> mGetDelayReportSubscriptions;
+	std::map<std::string, uint16_t> mRemoteDelay;
 };
 
 class A2DPAudioPathCheckTimeout {

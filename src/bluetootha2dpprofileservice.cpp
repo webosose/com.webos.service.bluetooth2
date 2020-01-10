@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 //
 // SPDX-License-Identifier: Apache-2.0
-
 
 #include "bluetootha2dpprofileservice.h"
 #include "bluetoothmanagerservice.h"
@@ -33,6 +32,11 @@ BluetoothA2dpProfileService::BluetoothA2dpProfileService(BluetoothManagerService
 		LS_CATEGORY_METHOD(connect)
 		LS_CATEGORY_METHOD(disconnect)
 		LS_CATEGORY_METHOD(getStatus)
+
+		LS_CATEGORY_CLASS_METHOD(BluetoothA2dpProfileService, getDelayReportingTime)
+		LS_CATEGORY_CLASS_METHOD(BluetoothA2dpProfileService, enableDelayReporting)
+		LS_CATEGORY_CLASS_METHOD(BluetoothA2dpProfileService, disableDelayReporting)
+
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, internal)
@@ -565,6 +569,7 @@ bool BluetoothA2dpProfileService::setSbcEncoderBitpool(LSMessage &message)
 
 	return true;
 }
+
 bool BluetoothA2dpProfileService::getCodecConfiguration(LSMessage &message)
 {
 	BT_INFO("A2DP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
@@ -640,6 +645,282 @@ bool BluetoothA2dpProfileService::getCodecConfiguration(LSMessage &message)
 	else if(mAptxConfigurationInfo)
 		notifySubscribersAboutAptxConfiguration(deviceAddress);
 
+	return true;
+}
+
+void BluetoothA2dpProfileService::delayReportChanged(const std::string &adapterAddress, const std::string &address, uint16_t delay)
+{
+	auto it = mRemoteDelay.find(address);
+	if (it == mRemoteDelay.end())
+	{
+		std::pair<std::string, uint16_t> item (address, delay);
+		mRemoteDelay.insert(item);
+	}
+	else
+	{
+		it->second = delay;
+	}
+
+	auto adapterIter = mGetDelayReportSubscriptions.find(adapterAddress);
+	if (adapterIter != mGetDelayReportSubscriptions.end())
+	{
+		auto &devSubscMap = adapterIter->second;
+		auto deviceIt = devSubscMap.find(address);
+		if (deviceIt != devSubscMap.end())
+		{
+			std::unique_ptr <LS::SubscriptionPoint> &subscriptionPoint = deviceIt->second;
+			pbnjson::JValue responseObj = pbnjson::Object();
+			responseObj.put("delay", (int)delay);
+			responseObj.put("returnValue", true);
+			responseObj.put("adapterAddress", adapterAddress);
+			responseObj.put("address", address);
+
+			LSUtils::postToSubscriptionPoint(subscriptionPoint.get(), responseObj);
+		}
+	}
+}
+
+bool BluetoothA2dpProfileService::getDelayReportingTime(LSMessage &message)
+{
+	BT_INFO("A2DP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+	bool subscribed = false;
+
+	const std::string schema =  STRICT_SCHEMA(
+                                    PROPS_3(PROP(address, string), PROP(subscribe, boolean), PROP(adapterAddress, string))
+                                    REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError == JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		else
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string deviceAddress;
+	if (requestObj.hasKey("address"))
+	{
+		deviceAddress = requestObj["address"].asString();
+
+		BluetoothDevice *device = getManager()->findDevice(adapterAddress,deviceAddress);
+		if (!device)
+		{
+			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
+			return true;
+		}
+	}
+
+	BluetoothError error = BLUETOOTH_ERROR_NONE;
+	bool state;
+	error = getImpl<BluetoothA2dpProfile>(adapterAddress)->getDelayReportingState(state);
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	if (error)
+	{
+		LSUtils::respondWithError(request, BT_ERR_API_NOT_SUPPORTED_BY_STACK);
+		return true;
+	}
+
+	if (!state)
+	{
+		LSUtils::respondWithError(request, BT_ERR_DELAY_REPORTING_DISABLED, true);
+		return true;
+	}
+
+	if (request.isSubscription())
+	{
+		LS::SubscriptionPoint *subscriptionPoint = 0;
+		auto adapterIter = mGetDelayReportSubscriptions.find(adapterAddress);
+		if (adapterIter == mGetDelayReportSubscriptions.end())
+		{
+			std::unique_ptr<LS::SubscriptionPoint> subsPoint(new LS::SubscriptionPoint);
+			subscriptionPoint = subsPoint.get();
+			subscriptionPoint->setServiceHandle(getManager());
+			DeviceSubscriptionMap devSubscMap;
+			devSubscMap.insert(std::pair<std::string,
+							   std::unique_ptr<LS::SubscriptionPoint>> (std::make_pair(deviceAddress, std::move(subsPoint))));
+			std::pair <std::string, DeviceSubscriptionMap> getDelayReportSubscriptionsItem (adapterAddress, std::move(devSubscMap));
+			mGetDelayReportSubscriptions.insert(std::move(getDelayReportSubscriptionsItem));
+		}
+		else
+		{
+			auto &devSubscMap = adapterIter->second;
+			auto deviceIt = devSubscMap.find(deviceAddress);
+			if (deviceIt == devSubscMap.end())
+			{
+				std::unique_ptr<LS::SubscriptionPoint> subsPoint(new LS::SubscriptionPoint);
+				subscriptionPoint = subsPoint.get();
+				subscriptionPoint->setServiceHandle(getManager());
+				devSubscMap.insert(std::pair<std::string,
+								   std::unique_ptr<LS::SubscriptionPoint>> (std::make_pair(deviceAddress, std::move(subsPoint))));
+			}
+			else
+			{
+				subscriptionPoint = deviceIt->second.get();
+			}
+		}
+		subscriptionPoint->subscribe(request);
+		subscribed = true;
+	}
+
+
+	auto it = mRemoteDelay.find(deviceAddress);
+	if (it != mRemoteDelay.end())
+	{
+		responseObj.put("delay", (int)it->second);
+	}
+	else
+	{
+		responseObj.put("delay", 0);
+	}
+
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", deviceAddress);
+	responseObj.put("returnValue", true);
+	responseObj.put("subscribed", subscribed);
+
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
+
+bool BluetoothA2dpProfileService::enableDelayReporting(LSMessage &message)
+{
+	BT_INFO("A2DP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema =  STRICT_SCHEMA(
+                                    PROPS_1(PROP(adapterAddress, string)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError == JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		else
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothA2dpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	bool state;
+	BluetoothError error = BLUETOOTH_ERROR_NONE;
+	error = getImpl<BluetoothA2dpProfile>(adapterAddress)->getDelayReportingState(state);
+	if (error)
+	{
+		LSUtils::respondWithError(request, BT_ERR_API_NOT_SUPPORTED_BY_STACK);
+		return true;
+	}
+
+	if (!state)
+	{
+		error = getImpl<BluetoothA2dpProfile>(adapterAddress)->setDelayReportingState(true);
+		if (error)
+		{
+			LSUtils::respondWithError(request, BT_ERR_API_NOT_SUPPORTED_BY_STACK);
+			return true;
+		}
+	}
+	else
+	{
+		LSUtils::respondWithError(request, BT_ERR_DELAY_REPORTING_ALREADY_ENABLED);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
+
+bool BluetoothA2dpProfileService::disableDelayReporting(LSMessage &message)
+{
+	BT_INFO("A2DP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema =  STRICT_SCHEMA(
+                                    PROPS_1(PROP(adapterAddress, string)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError == JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		else
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothA2dpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	bool state;
+	BluetoothError error;
+
+	error = getImpl<BluetoothA2dpProfile>(adapterAddress)->getDelayReportingState(state);
+	if (error)
+	{
+		LSUtils::respondWithError(request, BT_ERR_API_NOT_SUPPORTED_BY_STACK);
+		return true;
+	}
+
+	if (state)
+	{
+		error = getImpl<BluetoothA2dpProfile>(adapterAddress)->setDelayReportingState(false);
+		if (error)
+		{
+			LSUtils::respondWithError(request, BT_ERR_API_NOT_SUPPORTED_BY_STACK);
+			return true;
+		}
+	}
+	else
+	{
+		LSUtils::respondWithError(request, BT_ERR_DELAY_REPORTING_ALREADY_DISABLED);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
 	return true;
 }
 

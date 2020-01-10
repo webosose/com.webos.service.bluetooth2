@@ -106,6 +106,7 @@ public:
 
 	BluetoothManagerAdapter* findAdapterInfo(const std::string &address) const;
 	BluetoothDevice* findDevice(const std::string &address) const;
+	BluetoothDevice* findDevice(const std::string &adapterAddress, const std::string &address) const;
 	bool getPowered(const std::string &address);
 	bool isAdapterAvailable(const std::string &address);
 	bool isRequestedAdapterAvailable(LS::Message &request, const pbnjson::JValue &requestObj, std::string &adapterAddress);

@@ -1394,7 +1394,7 @@ bool BluetoothManagerAdapter::unpair(LS::Message &request, pbnjson::JValue &requ
 
 		pbnjson::JValue responseObj = pbnjson::Object();
 		responseObj.put("returnValue", true);
-		responseObj.put("adapterAddress", mAdapter);
+		responseObj.put("adapterAddress", mAddress);
 
 		LSUtils::postToClient(requestMessage, responseObj);
 
