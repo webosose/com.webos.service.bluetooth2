@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include "ls2utils.h"
 #include "clientwatch.h"
 #include "logging.h"
-
+#include <cmath> 
 
 using namespace std::placeholders;
 
@@ -1038,13 +1038,15 @@ bool BluetoothAvrcpProfileService::setAbsoluteVolume(LSMessage &message)
 	{
 		volume = requestObj["volume"].asNumber<int32_t>();
 
-		if (volume < 0 || volume > 127)
+		if (volume < 0 || volume > 100)
 		{
 				LSUtils::respondWithError(request, retrieveErrorText(BT_ERR_AVRCP_VOLUME_INVALID_VALUE_PARAM) + std::to_string(volume), BT_ERR_AVRCP_VOLUME_INVALID_VALUE_PARAM);
 				return true;
 		}
 	}
-
+	
+	//convert volume from percentage to volume level
+	volume = (int32_t)std::round((volume/100.0) * 127);
 	BluetoothError error = getImpl<BluetoothAvrcpProfile>(adapterAddress)->setAbsoluteVolume(deviceAddress, volume);
 
 	if (BLUETOOTH_ERROR_NONE != error)
@@ -1716,7 +1718,7 @@ void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
 	//Convert to percentage as per API documentation
-	volume = (volume/127.0) * 100;
+	volume = std::round((volume/127.0) * 100);
 
 	if (mRemoteVolumes.find(address) != mRemoteVolumes.end())
 		mRemoteVolumes[address] = volume;
