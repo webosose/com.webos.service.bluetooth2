@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
 		LS_CATEGORY_METHOD(getStatus)
+		LS_CATEGORY_METHOD(connect)
+		LS_CATEGORY_METHOD(disconnect)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, awaitAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, acceptAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, rejectAccessRequest)
@@ -55,6 +57,15 @@ void BluetoothPbapProfileService::initialize()
 	if (mImpl)
 		getImpl<BluetoothPbapProfile>()->registerObserver(this);
 }
+
+void BluetoothPbapProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	if (findImpl(adapterAddress))
+		getImpl<BluetoothPbapProfile>(adapterAddress)->registerObserver(this);
+}
+
 
 bool BluetoothPbapProfileService::awaitAccessRequest(LSMessage &message)
 {
@@ -107,6 +118,16 @@ bool BluetoothPbapProfileService::awaitAccessRequest(LSMessage &message)
 	LSUtils::postToClient(mIncomingAccessRequestWatch->getMessage(), responseObj);
 
 	return true;
+}
+
+void BluetoothPbapProfileService::propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties)
+{
+	BluetoothProfileService::propertiesChanged(adapterAddress, address, properties);
+}
+
+void BluetoothPbapProfileService::propertiesChanged(const std::string &address, BluetoothPropertiesList properties)
+{
+	BluetoothProfileService::propertiesChanged(getManager()->getAddress(), address, properties);
 }
 
 void BluetoothPbapProfileService::setAccessRequestsAllowed(bool state)

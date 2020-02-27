@@ -81,6 +81,8 @@
         "com.webos.service.bluetooth2/pan/connect",
         "com.webos.service.bluetooth2/pan/disconnect",
         "com.webos.service.bluetooth2/pan/setTethering",
+        "com.webos.service.bluetooth2/pbap/connect",
+        "com.webos.service.bluetooth2/pbap/disconnect",
         "com.webos.service.bluetooth2/pbap/acceptAccessRequest",
         "com.webos.service.bluetooth2/pbap/awaitAccessRequest",
         "com.webos.service.bluetooth2/pbap/getStatus",

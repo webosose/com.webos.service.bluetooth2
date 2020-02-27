@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +37,9 @@ public:
 
 	void accessRequested(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void initialize();
+	void initialize(const std::string &adapterAddress);
+	void propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
+	void propertiesChanged(const std::string &address, BluetoothPropertiesList properties);
 
 private:
 	class AccessRequest
