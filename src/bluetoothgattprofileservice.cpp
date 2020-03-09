@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -2063,6 +2063,7 @@ bool BluetoothGattProfileService::monitorCharacteristic(LSMessage &message)
 
 		subscriptionInfo.serviceUuid = serviceUuid;
 		subscriptionInfo.characteristicUuid = characteristicUuid;
+		subscriptionInfo.handle = 0;
 	}
 
 	//Set a callback to see if client dropped. We do it this way because we first need to get the client watch object and pass this

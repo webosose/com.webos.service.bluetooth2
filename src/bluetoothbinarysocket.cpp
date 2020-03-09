@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ bool BluetoothBinarySocket::createBinarySocket(const std::string &name)
 
 	bzero(&serverAddr, sizeof(serverAddr));
 	serverAddr.sun_family = AF_UNIX;
-	strcpy(serverAddr.sun_path, mSocketFileName);
+	strncpy(serverAddr.sun_path, mSocketFileName, sizeof(serverAddr.sun_path)-1);
 
 	if (bind(serverSockFd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
 	{
