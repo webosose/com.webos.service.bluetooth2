@@ -34,7 +34,8 @@ public:
 	bool awaitAccessRequest(LSMessage &message);
 	bool acceptAccessRequest(LSMessage &message);
 	bool rejectAccessRequest(LSMessage &message);
-
+	bool setPhoneBook(LSMessage &message);
+	bool prepareSetPhoneBook(LS::Message &request, pbnjson::JValue &requestObj);
 	void accessRequested(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void initialize();
 	void initialize(const std::string &adapterAddress);
@@ -58,6 +59,7 @@ private:
 
 	void setAccessRequestsAllowed(bool state);
 	void notifyConfirmationRequest(LS::Message &request, const std::string &adapterAddress, bool success);
+	void notifySetPhoneBookRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool success);
 	void createAccessRequest(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void assignAccessRequestId(AccessRequest *accessRequest);
 	void notifyAccessRequestConfirmation(uint64_t requestId);
