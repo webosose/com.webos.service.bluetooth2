@@ -21,7 +21,7 @@
 #include <string>
 #include <bluetooth-sil-api.h>
 #include <luna-service2/lunaservice.hpp>
-
+#include <pbnjson.hpp>
 #include "bluetoothprofileservice.h"
 
 class BluetoothPbapProfileService : public BluetoothProfileService,
@@ -38,6 +38,8 @@ public:
 	bool prepareSetPhoneBook(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getSize(LSMessage &message);
 	bool prepareGetSize(LS::Message &request, pbnjson::JValue &requestObj);
+	bool vCardListing(LSMessage &message);
+	bool prepareVCardListing(LS::Message &request, pbnjson::JValue &requestObj);
 	void accessRequested(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void initialize();
 	void initialize(const std::string &adapterAddress);
@@ -64,6 +66,8 @@ private:
 	void notifySetPhoneBookRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool success);
 	void notifyGetSizeRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, uint16_t size, bool success);
 	void createAccessRequest(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
+	void notifyVCardListingRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success);
+	pbnjson::JValue createJsonVCardListing(BluetoothPbapVCardList &list);
 	void assignAccessRequestId(AccessRequest *accessRequest);
 	void notifyAccessRequestConfirmation(uint64_t requestId);
 	void deleteAccessRequestId(const std::string &requestIdStr);

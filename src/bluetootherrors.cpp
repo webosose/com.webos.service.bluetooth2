@@ -43,7 +43,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_ABORTED, "Operation was aborted"},
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_ENABLED, "Tethering is already enabled"},
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"},
-	{BLUETOOTH_ERROR_ALREADY_CONNECTED_ONE_DEVICE,"One headset already connected to this adapter please check in device/getStatus"}
+	{BLUETOOTH_ERROR_ALREADY_CONNECTED_ONE_DEVICE, "One headset already connected to this adapter please check in device/getStatus"},
+	{BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE, "No folder is selected, select the folder first"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
