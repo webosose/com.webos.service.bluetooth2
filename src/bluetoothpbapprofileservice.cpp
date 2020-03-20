@@ -38,6 +38,7 @@ BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService
 		LS_CATEGORY_METHOD(connect)
 		LS_CATEGORY_METHOD(disconnect)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, setPhoneBook)
+		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, getSize)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, awaitAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, acceptAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, rejectAccessRequest)
@@ -283,6 +284,93 @@ bool BluetoothPbapProfileService::prepareSetPhoneBook(LS::Message &request, pbnj
 	}
 	return true;
 }
+
+bool BluetoothPbapProfileService::prepareGetSize(LS::Message &request, pbnjson::JValue &requestObj)
+{
+
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string))
+                                              REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (JSON_PARSE_SCHEMA_ERROR != parseError)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+
+	std::string adapterAddress;
+	if (requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = getManager()->getAdapter(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return false;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return false;
+	}
+
+	std::string deviceAddress;
+	if (requestObj.hasKey("address"))
+	{
+		deviceAddress = requestObj["address"].asString();
+
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
+		{
+			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+			return false;
+		}
+	}
+	return true;
+
+}
+
+bool BluetoothPbapProfileService::getSize(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+
+	if (!prepareGetSize(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string address =  requestObj["address"].asString();
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto getSizeCallback = [this, adapterAddress, address, requestMessage](BluetoothError error,uint16_t size) {
+		LS::Message request(requestMessage);
+
+		if (BLUETOOTH_ERROR_NONE != error)
+			notifyGetSizeRequest(request, error, adapterAddress, address, size,false);
+		else
+			notifyGetSizeRequest(request, error, adapterAddress, address, size,true);
+	};
+
+	getImpl<BluetoothPbapProfile>(adapterAddress)->getPhonebookSize(address,getSizeCallback);
+
+	return true;
+}
+
 bool BluetoothPbapProfileService::setPhoneBook(LSMessage &message)
 {
 	LS::Message request(&message);
@@ -313,6 +401,23 @@ bool BluetoothPbapProfileService::setPhoneBook(LSMessage &message)
 	getImpl<BluetoothPbapProfile>(adapterAddress)->setPhoneBook(address, repository, object, setPhoneBookCallback);
 
 	return true;
+}
+
+void BluetoothPbapProfileService::notifyGetSizeRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, uint16_t size, bool success)
+{
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	if (!success)
+	{
+		LSUtils::respondWithError(request, error);
+	}
+
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("returnValue", success);
+	responseObj.put("size", size);
+	LSUtils::postToClient(request, responseObj);
+	LSMessageUnref(request.get());
 }
 
 void BluetoothPbapProfileService::notifySetPhoneBookRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool success)
