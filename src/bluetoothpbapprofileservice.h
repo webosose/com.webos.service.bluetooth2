@@ -42,6 +42,8 @@ public:
 	bool prepareVCardListing(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getPhoneBookProperties(LSMessage &message);
 	bool prepareGetPhoneBookProperties(LS::Message &request, pbnjson::JValue &requestObj);
+	bool getvCardFilters(LSMessage &message);
+	bool prepareGetvCardFilters(LS::Message &request, pbnjson::JValue &requestObj);
 	void accessRequested(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void initialize();
 	void initialize(const std::string &adapterAddress);
@@ -67,6 +69,8 @@ private:
 	void notifyConfirmationRequest(LS::Message &request, const std::string &adapterAddress, bool success);
 	void notifySetPhoneBookRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool success);
 	void notifyGetSizeRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, uint16_t size, bool success);
+	void notifyGetvCardFiltersRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, std::list<std::string> filters, bool success);
+	pbnjson::JValue createJsonFilterList(std::list<std::string> filters);
 	void createAccessRequest(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void notifyVCardListingRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success);
 	pbnjson::JValue createJsonVCardListing(BluetoothPbapVCardList &list);
