@@ -1,4 +1,4 @@
-// Copyright (c) 2019 LG Electronics, Inc.
+// Copyright (c) 2019-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +28,16 @@
 #include "bluetoothprofileservice.h"
 
 using namespace std::placeholders;
+
+
+static const std::unordered_map<BluetoothDeviceRole, std::string> uuidtoRoleMap ={
+	{BLUETOOTH_DEVICE_ROLE_HFP_HF, "0000111e-0000-1000-8000-00805f9b34fb"},
+	{BLUETOOTH_DEVICE_ROLE_HFP_AG, "0000111f-0000-1000-8000-00805f9b34fb"},
+	{BLUETOOTH_DEVICE_ROLE_A2DP_SRC, "0000110a-0000-1000-8000-00805f9b34fb"},
+	{BLUETOOTH_DEVICE_ROLE_A2DP_SINK,"0000110b-0000-1000-8000-00805f9b34fb"},
+	{BLUETOOTH_DEVICE_ROLE_AVRCP_RMT, "0000110e-0000-1000-8000-00805f9b34fb"},
+	{BLUETOOTH_DEVICE_ROLE_AVRCP_TGT, "0000110c-0000-1000-8000-00805f9b34fb"},
+};
 
 BluetoothManagerAdapter::BluetoothManagerAdapter(BluetoothManagerService *mngr, std::string address):
 mPowered(false),
@@ -847,6 +857,8 @@ void BluetoothManagerAdapter::appendDevices(pbnjson::JValue &object)
 		deviceObj.put("blocked", device->getBlocked());
 		deviceObj.put("rssi", device->getRssi());
 
+		appendConnectedRoles(deviceObj, device);
+
 
 		deviceObj.put("adapterAddress", getAddress());
 
@@ -868,6 +880,20 @@ void BluetoothManagerAdapter::appendScanRecord(pbnjson::JValue &object, const st
 		scanRecordArray.append(scanRecord[i]);
 
 	object.put("scanRecord", scanRecordArray);
+}
+
+void BluetoothManagerAdapter::appendConnectedRoles(pbnjson::JValue &object, BluetoothDevice* device)
+{
+	pbnjson::JValue roleArray = pbnjson::Array();
+
+	for (auto it = uuidtoRoleMap.begin(); it != uuidtoRoleMap.end(); it++)
+	{
+		if (device->hasConnectedRole(it->first))
+		{
+			roleArray.append(it->second);
+		}
+	}
+	object.put("connectedRoles", roleArray);
 }
 
 void BluetoothManagerAdapter::appendManufacturerData(pbnjson::JValue &object, const std::vector<uint8_t> manufacturerData)

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 LG Electronics, Inc.
+// Copyright (c) 2019-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -136,6 +136,7 @@ public:
 	void appendAvailableStatus(pbnjson::JValue &object);
 	void appendManufacturerData(pbnjson::JValue &object, const std::vector<uint8_t> manufacturerData);
 	void appendScanRecord(pbnjson::JValue &object, const std::vector<uint8_t> scanRecord);
+	void appendConnectedRoles(pbnjson::JValue &object, BluetoothDevice *device);
 
 	void notifySubscriberLeDevicesChanged();
 	void notifySubscribersDevicesChanged();
