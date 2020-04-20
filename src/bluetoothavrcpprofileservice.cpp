@@ -21,6 +21,7 @@
 #include "ls2utils.h"
 #include "clientwatch.h"
 #include "logging.h"
+#include "utils.h"
 #include <cmath> 
 
 using namespace std::placeholders;
@@ -503,12 +504,6 @@ bool BluetoothAvrcpProfileService::sendPassThroughCommand(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothAvrcpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(address, string),
 		PROP(keyCode, string), PROP(keyStatus, string),PROP(adapterAddress, string))
 		REQUIRED_3(address, keyCode, keyStatus));
@@ -534,20 +529,12 @@ bool BluetoothAvrcpProfileService::sendPassThroughCommand(LSMessage &message)
 		return true;
 
 	std::string deviceAddress;
-	if (requestObj.hasKey("address"))
-	{
-		deviceAddress = requestObj["address"].asString();
-		if (!getManager()->isDeviceAvailable(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-			return true;
-		}
+	deviceAddress = convertToLower(requestObj["address"].asString());
 
-		if (!isDeviceConnected(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
-			return true;
-		}
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
 	}
 
 	std::string keyCodeStr;
@@ -577,7 +564,8 @@ bool BluetoothAvrcpProfileService::sendPassThroughCommand(LSMessage &message)
 	}
 
 	BT_INFO("AVRCP", 0, "Service calls SIL API : sendPassThroughCommand");
-	BluetoothError error = getImpl<BluetoothAvrcpProfile>()->sendPassThroughCommand(deviceAddress, keyCode, keyStatus);
+	BluetoothError error = getImpl<BluetoothAvrcpProfile>(adapterAddress)->
+		sendPassThroughCommand(deviceAddress, keyCode, keyStatus);
 	BT_INFO("AVRCP", 0, "Return of sendPassThroughCommand is %d", error);
 
 	if (BLUETOOTH_ERROR_NONE != error)
