@@ -40,6 +40,8 @@ public:
 	bool prepareGetSize(LS::Message &request, pbnjson::JValue &requestObj);
 	bool vCardListing(LSMessage &message);
 	bool prepareVCardListing(LS::Message &request, pbnjson::JValue &requestObj);
+	bool getPhoneBookProperties(LSMessage &message);
+	bool prepareGetPhoneBookProperties(LS::Message &request, pbnjson::JValue &requestObj);
 	void accessRequested(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void initialize();
 	void initialize(const std::string &adapterAddress);
@@ -68,10 +70,15 @@ private:
 	void createAccessRequest(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void notifyVCardListingRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success);
 	pbnjson::JValue createJsonVCardListing(BluetoothPbapVCardList &list);
+	void notifySubscribersAboutPropertiesChange(const std::string &address);
+	void notifyGetPhoneBookPropertiesRequest (LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool subscribed, bool success);
+	void appendCurrentProperties(pbnjson::JValue &object);
 	void assignAccessRequestId(AccessRequest *accessRequest);
 	void notifyAccessRequestConfirmation(uint64_t requestId);
 	void deleteAccessRequestId(const std::string &requestIdStr);
 	void deleteAccessRequest(const std::string &requestId);
+	bool updateFromPbapProperties(const BluetoothPropertiesList &properties);
+	void profilePropertiesChanged(BluetoothPropertiesList properties, const std::string &address);
 
 	bool notifyAccessRequestListenerDropped();
 	bool prepareConfirmationRequest(LS::Message &request, pbnjson::JValue &requestObj, bool accept);
@@ -80,11 +87,23 @@ private:
 	AccessRequest *findRequest(const std::string &requestIdStr);
 	uint64_t getAccessRequestId(const std::string &requestIdStr);
 
+	std::string getFolder() const { return mFolder; }
+	std::string getPrimaryCounter() const { return mPrimaryCounter; }
+	std::string getSecondaryCounter() const { return mSecondaryCounter; }
+	std::string getDatabaseIdentifier() const { return mDatabaseIdentifier; }
+	bool getFixedImageSize() const { return mFixedImageSize; }
+	void setErrorProperties();
 private:
 	LSUtils::ClientWatch *mIncomingAccessRequestWatch;
 	bool mAccessRequestsAllowed;
 	uint64_t mRequestIndex;
 	uint32_t mNextRequestId;
+	LS::SubscriptionPoint mGetPropertiesSubscriptions;
+	std::string mFolder;
+	std::string mPrimaryCounter;
+	std::string mSecondaryCounter;
+	std::string mDatabaseIdentifier;
+	bool mFixedImageSize;
 };
 
 #endif // BLUETOOTHPBAPPROFILESERVICE_H

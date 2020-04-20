@@ -40,6 +40,7 @@ BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, setPhoneBook)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, getSize)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, vCardListing)
+		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, getPhoneBookProperties)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, awaitAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, acceptAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, rejectAccessRequest)
@@ -47,6 +48,8 @@ BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService
 
 	manager->registerCategory("/pbap", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/pbap", this);
+
+	mGetPropertiesSubscriptions.setServiceHandle(manager);
 }
 
 BluetoothPbapProfileService::~BluetoothPbapProfileService()
@@ -272,16 +275,11 @@ bool BluetoothPbapProfileService::prepareSetPhoneBook(LS::Message &request, pbnj
 		return false;
 	}
 
-	std::string deviceAddress;
-	if (requestObj.hasKey("address"))
+	std::string deviceAddress = requestObj["address"].asString();
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
 	{
-		deviceAddress = requestObj["address"].asString();
-
-		if (!isDeviceConnected(adapterAddress, deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
-			return false;
-		}
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return false;
 	}
 	return true;
 }
@@ -327,19 +325,13 @@ bool BluetoothPbapProfileService::prepareGetSize(LS::Message &request, pbnjson::
 		return false;
 	}
 
-	std::string deviceAddress;
-	if (requestObj.hasKey("address"))
+	std::string deviceAddress = requestObj["address"].asString();
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
 	{
-		deviceAddress = requestObj["address"].asString();
-
-		if (!isDeviceConnected(adapterAddress, deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
-			return false;
-		}
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return false;
 	}
 	return true;
-
 }
 
 bool BluetoothPbapProfileService::getSize(LSMessage &message)
@@ -641,15 +633,12 @@ bool BluetoothPbapProfileService::prepareVCardListing(LS::Message &request, pbnj
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return false;
 	}
-	std::string deviceAddress;
-	if (requestObj.hasKey("address"))
+
+	std::string deviceAddress = requestObj["address"].asString();
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
 	{
-		deviceAddress = requestObj["address"].asString();
-		if (!isDeviceConnected(adapterAddress, deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
-			return false;
-		}
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return false;
 	}
 	return true;
 }
@@ -709,4 +698,191 @@ pbnjson::JValue BluetoothPbapProfileService::createJsonVCardListing(BluetoothPba
 		platformObjArr << cmdRply;
 	}
 	return platformObjArr;
+}
+
+bool BluetoothPbapProfileService::prepareGetPhoneBookProperties(LS::Message &request, pbnjson::JValue &requestObj)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string), PROP(address, string),PROP(subscribe, boolean)) REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (JSON_PARSE_SCHEMA_ERROR != parseError)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+	std::string adapterAddress;
+	if(requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = getManager()->getAdapter(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return false;
+	}
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return false;
+	}
+
+	std::string deviceAddress = requestObj["address"].asString();
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return false;
+	}
+	return true;
+}
+
+bool BluetoothPbapProfileService::getPhoneBookProperties(LSMessage &message)
+{
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	bool subscribed = false;
+
+	if (!prepareGetPhoneBookProperties(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+	setErrorProperties();
+	std::string address =  requestObj["address"].asString();
+
+	if (request.isSubscription())
+	{
+		mGetPropertiesSubscriptions.subscribe(request);
+		subscribed = true;
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto getPhoneBookPropertiesResultCallback = [this, address, adapterAddress, requestMessage, subscribed](BluetoothError error, const BluetoothPropertiesList &properties) {
+		LS::Message request(requestMessage);
+		bool success =false;
+		if (error == BLUETOOTH_ERROR_NONE)
+		{
+			updateFromPbapProperties(properties);
+			success =true;
+		}
+		notifyGetPhoneBookPropertiesRequest (request, error, adapterAddress, address, subscribed, success);
+	};
+	getImpl<BluetoothPbapProfile>(adapterAddress)->getPhoneBookProperties(address,getPhoneBookPropertiesResultCallback);
+	return true;
+}
+
+void BluetoothPbapProfileService::appendCurrentProperties(pbnjson::JValue &object)
+{
+	BT_INFO("PBAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	if( retrieveErrorCodeText(BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE) == getFolder())
+		return;
+	pbnjson::JValue propertyObj = pbnjson::Object();
+	propertyObj.put("repository",getFolder());
+	propertyObj.put("databaseIdentifier", getDatabaseIdentifier());
+	propertyObj.put("primaryVersionCounter", getPrimaryCounter());
+	propertyObj.put("secondaryVersionCounter", getSecondaryCounter());
+	propertyObj.put("fixedImageSize", getFixedImageSize());
+	object.put("properties", propertyObj);
+}
+
+void BluetoothPbapProfileService::notifyGetPhoneBookPropertiesRequest (LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool subscribed, bool success)
+{
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	if (!success)
+	{
+		LSUtils::respondWithError(request, error);
+		return;
+	}
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("subscribed", subscribed);
+	responseObj.put("returnValue", true);
+	appendCurrentProperties(responseObj);
+	LSUtils::postToClient(request, responseObj);
+	LSMessageUnref(request.get());
+}
+
+void BluetoothPbapProfileService::notifySubscribersAboutPropertiesChange(const std::string &address)
+{
+	BT_INFO("PBAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("adapterAddress", getManager()->getAddress());
+	responseObj.put("address", address);
+	appendCurrentProperties(responseObj);
+	responseObj.put("subscribed", true);
+	responseObj.put("returnValue", true);
+	LSUtils::postToSubscriptionPoint(&mGetPropertiesSubscriptions, responseObj);
+}
+
+void BluetoothPbapProfileService::profilePropertiesChanged(BluetoothPropertiesList properties, const std::string &address)
+{
+	BT_DEBUG("Bluetooth PBAP properties have changed");
+	if(updateFromPbapProperties(properties))
+	{
+		notifySubscribersAboutPropertiesChange(address);
+	}
+}
+
+bool BluetoothPbapProfileService::updateFromPbapProperties(const BluetoothPropertiesList &properties)
+{
+	bool changed = false;
+	BT_INFO("PBAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	for(auto prop : properties)
+	{
+		switch (prop.getType())
+		{
+		case BluetoothProperty::Type::FOLDER:
+			mFolder = prop.getValue<std::string>();
+			changed = true;
+			BT_DEBUG("PBAP Current folder has changed to %s", mFolder.c_str());
+			break;
+		case BluetoothProperty::Type::PRIMARY_COUNTER:
+			mPrimaryCounter = prop.getValue<std::string>();
+			changed = true;
+			BT_DEBUG("PBAP primary version counter has changed to %s", mPrimaryCounter.c_str());
+			break;
+		case BluetoothProperty::Type::SECONDERY_COUNTER:
+			mSecondaryCounter = prop.getValue<std::string>();
+			changed = true;
+			BT_DEBUG("PBAP secondary version has changed to %s", mSecondaryCounter.c_str());
+			break;
+		case BluetoothProperty::Type::DATABASE_IDENTIFIER:
+			mDatabaseIdentifier = prop.getValue<std::string>();
+			changed = true;
+			BT_DEBUG("PBAP persistent database identifier version has changed to %s", mDatabaseIdentifier.c_str());
+			break;
+		case BluetoothProperty::Type::FIXED_IMAGE_SIZE:
+			mFixedImageSize = prop.getValue<bool>();
+			changed = true;
+			BT_DEBUG("PBAP support for fixed image size has changed to %d", mFixedImageSize);
+			break;
+		default:
+			break;
+		}
+	}
+	return changed;
+}
+
+void BluetoothPbapProfileService::setErrorProperties()
+{
+	mFolder = retrieveErrorCodeText(BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE);
+	mPrimaryCounter = "NULL";
+	mSecondaryCounter = "NULL";
+	mDatabaseIdentifier = "NULL";
+	mFixedImageSize = false;
 }
