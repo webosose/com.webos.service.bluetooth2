@@ -2063,6 +2063,7 @@ bool BluetoothGattProfileService::monitorCharacteristic(LSMessage &message)
 
 		subscriptionInfo.serviceUuid = serviceUuid;
 		subscriptionInfo.characteristicUuid = characteristicUuid;
+		subscriptionInfo.handle = 0;
 	}
 
 	//Set a callback to see if client dropped. We do it this way because we first need to get the client watch object and pass this
