@@ -22,7 +22,7 @@
 #include "clientwatch.h"
 #include "logging.h"
 #include "utils.h"
-#include <cmath> 
+#include <cmath>
 
 using namespace std::placeholders;
 
@@ -74,8 +74,6 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 	manager->registerCategory("/avrcp/internal", LS_CATEGORY_TABLE_NAME(internal), NULL, NULL);
 	manager->setCategoryData("/avrcp/internal", this);
 
-	mGetPlayerApplicationSettingsSubscriptions.setServiceHandle(manager);
-
 	mSupportedNotificationEvents.clear();
 }
 
@@ -112,6 +110,34 @@ BluetoothAvrcpProfileService::~BluetoothAvrcpProfileService()
 		delete clientWatch;
 	}
 	mGetSupportedNotificationEventsWatches.clear();
+
+	for (auto itMediaData = mGetMediaMetaDataSubscriptions.begin();
+		itMediaData != mGetMediaMetaDataSubscriptions.end(); ++itMediaData)
+	{
+		for (auto itSub = itMediaData->second.begin(); itSub != itMediaData->second.end(); ++itSub)
+		{
+			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
+			delete subscriptionPoint;
+		}
+	}
+	for (auto itMediaStatus = mGetMediaPlayStatusSubscriptions.begin();
+		itMediaStatus != mGetMediaMetaDataSubscriptions.end(); ++itMediaStatus)
+	{
+		for (auto itSub = itMediaStatus->second.begin(); itSub != itMediaStatus->second.end(); ++itSub)
+		{
+			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
+			delete subscriptionPoint;
+		}
+	}
+	for (auto itPlayerSettings = mGetPlayerApplicationSettingsSubscriptions.begin();
+		itPlayerSettings != mGetMediaMetaDataSubscriptions.end(); ++itPlayerSettings)
+	{
+		for (auto itSub = itPlayerSettings->second.begin(); itSub != itPlayerSettings->second.end(); ++itSub)
+		{
+			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
+			delete subscriptionPoint;
+		}
+	}
 }
 
 void BluetoothAvrcpProfileService::initialize()
@@ -584,6 +610,38 @@ bool BluetoothAvrcpProfileService::sendPassThroughCommand(LSMessage &message)
 	return true;
 }
 
+LS::SubscriptionPoint* BluetoothAvrcpProfileService::addSubscription(std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>>& subscriptions,
+	const std::string& adapterAddress, const std::string& deviceAddress)
+{
+	BT_INFO("AVRCP", 0, "addSubscription");
+	LS::SubscriptionPoint* subscriptionPoint = 0;
+
+	auto subscriptionIter = subscriptions.find(adapterAddress);
+	if (subscriptionIter == subscriptions.end())
+	{
+		std::map<std::string, LS::SubscriptionPoint*> apiSubscriptionPoints;
+		subscriptionPoint = new LS::SubscriptionPoint;
+		subscriptionPoint->setServiceHandle(getManager());
+		apiSubscriptionPoints.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+		subscriptions.insert(std::pair<std::string, std::map<std::string, LS::SubscriptionPoint*>>(adapterAddress, apiSubscriptionPoints));
+	}
+	else
+	{
+		auto subscriptionDeviceIter = (subscriptionIter->second).find(deviceAddress);
+		if (subscriptionDeviceIter == (subscriptionIter->second).end())
+		{
+			subscriptionPoint = new LS::SubscriptionPoint;
+			subscriptionPoint->setServiceHandle(getManager());
+			(subscriptionIter->second).insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+		}
+		else
+		{
+			subscriptionPoint = subscriptionDeviceIter->second;
+		}
+	}
+	return subscriptionPoint;
+}
+
 bool BluetoothAvrcpProfileService::getMediaMetaData(LSMessage &message)
 {
 	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
@@ -625,19 +683,7 @@ bool BluetoothAvrcpProfileService::getMediaMetaData(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint *subscriptionPoint = 0;
-
-		auto subscriptionIter = mGetMediaMetaDataSubscriptions.find(deviceAddress);
-		if (subscriptionIter == mGetMediaMetaDataSubscriptions.end())
-		{
-			subscriptionPoint = new LS::SubscriptionPoint;
-			subscriptionPoint->setServiceHandle(getManager());
-			mGetMediaMetaDataSubscriptions.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
-		}
-		else
-		{
-			subscriptionPoint = subscriptionIter->second;
-		}
+		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetMediaMetaDataSubscriptions, adapterAddress, deviceAddress);
 
 		subscriptionPoint->subscribe(request);
 		subscribed = true;
@@ -658,8 +704,8 @@ bool BluetoothAvrcpProfileService::getMediaMetaData(LSMessage &message)
 		metaDataObj.put("album",  mMediaMetaData->getAlbum());
 		metaDataObj.put("genre",  mMediaMetaData->getGenre());
 		metaDataObj.put("trackNumber", (int32_t)mMediaMetaData->getTrackNumber());
-		metaDataObj.put("trackCount",  (int32_t)mMediaMetaData->getTrackCount());
-		metaDataObj.put("duration",    (int32_t)mMediaMetaData->getDuration());
+		metaDataObj.put("trackCount", (int32_t)mMediaMetaData->getTrackCount());
+		metaDataObj.put("duration", (int32_t)mMediaMetaData->getDuration());
 
 		responseObj.put("metaData", metaDataObj);
 	}
@@ -667,16 +713,6 @@ bool BluetoothAvrcpProfileService::getMediaMetaData(LSMessage &message)
 	LSUtils::postToClient(request, responseObj);
 
 	return true;
-}
-void BluetoothAvrcpProfileService::notifySubscribersAboutApplicationSettings()
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	appendCurrentApplicationSettings(responseObj);
-
-	responseObj.put("returnValue", true);
-
-	LSUtils::postToSubscriptionPoint(&mGetPlayerApplicationSettingsSubscriptions, responseObj);
 }
 
 void BluetoothAvrcpProfileService::appendCurrentApplicationSettings(pbnjson::JValue &object)
@@ -731,35 +767,31 @@ bool BluetoothAvrcpProfileService::getPlayerApplicationSettings(LSMessage &messa
 
 	if (request.isSubscription())
 	{
-		mGetPlayerApplicationSettingsSubscriptions.subscribe(request);
+		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetPlayerApplicationSettingsSubscriptions,
+			adapterAddress, deviceAddress);
+
+		subscriptionPoint->subscribe(request);
 		subscribed = true;
 	}
 
 	appendCurrentApplicationSettings(responseObj);
 
-	responseObj.put("returnValue", true);
 	responseObj.put("subscribed", subscribed);
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", deviceAddress);
+
 
 	LSUtils::postToClient(request, responseObj);
-
-	BT_INFO("AVRCP", 0, "Service calls SIL API : getPlayerApplicationSettingsProperties");
-	getImpl<BluetoothAvrcpProfile>(adapterAddress)->
-		getPlayerApplicationSettingsProperties([this](BluetoothError error, const BluetoothPlayerApplicationSettingsPropertiesList &properties) {
-		BT_INFO("AVRCP", 0, "Return of getPlayerApplicationSettingsProperties is %d", error);
-			if (error != BLUETOOTH_ERROR_NONE)
-				return;
-
-			updateFromPlayerApplicationSettingsProperties(properties);
-	});
-
 	return true;
 }
 
-void BluetoothAvrcpProfileService::updateFromPlayerApplicationSettingsProperties(const BluetoothPlayerApplicationSettingsPropertiesList &properties)
+void BluetoothAvrcpProfileService::playerApplicationSettingsReceived(const BluetoothPlayerApplicationSettingsPropertiesList& properties,
+	const std::string& adapterAddress, const std::string& address)
 {
 	bool changed = false;
 
-	for(auto prop : properties)
+	for (auto prop : properties)
 	{
 		switch (prop.getType())
 		{
@@ -783,7 +815,27 @@ void BluetoothAvrcpProfileService::updateFromPlayerApplicationSettingsProperties
 	}
 
 	if (changed)
-		notifySubscribersAboutApplicationSettings();
+	{
+		pbnjson::JValue responseObj = pbnjson::Object();
+
+		auto subscriptionIter = mGetPlayerApplicationSettingsSubscriptions.find(adapterAddress);
+		if (subscriptionIter == mGetPlayerApplicationSettingsSubscriptions.end())
+			return;
+
+
+		auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
+		if (subscriptionDeviceIter == (subscriptionIter->second).end())
+			return;
+
+		appendCurrentApplicationSettings(responseObj);
+		responseObj.put("subscribed", true);
+		responseObj.put("returnValue", true);
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", address);
+
+		LS::SubscriptionPoint* subscriptionPoint = subscriptionDeviceIter->second;
+		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+	}
 }
 
 void BluetoothAvrcpProfileService::handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error)
@@ -1171,22 +1223,12 @@ bool BluetoothAvrcpProfileService::getMediaPlayStatus(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint *subscriptionPoint = 0;
-
-		auto subscriptionIter = mGetMediaPlayStatusSubscriptions.find(deviceAddress);
-		if (subscriptionIter == mGetMediaPlayStatusSubscriptions.end())
-		{
-			subscriptionPoint = new LS::SubscriptionPoint;
-			subscriptionPoint->setServiceHandle(getManager());
-			mGetMediaPlayStatusSubscriptions.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
-		}
-		else
-		{
-			subscriptionPoint = subscriptionIter->second;
-		}
+		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetMediaPlayStatusSubscriptions,
+			adapterAddress, deviceAddress);
 
 		subscriptionPoint->subscribe(request);
 		subscribed = true;
+
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -1588,7 +1630,8 @@ void BluetoothAvrcpProfileService::mediaPlayStatusRequested(BluetoothAvrcpReques
 	createMediaRequest(false, requestId, address);
 }
 
-void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &address)
+void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string  &adapterAddress,
+	const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
@@ -1612,8 +1655,13 @@ void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaDat
 	mMediaMetaData->setTrackCount(metaData.getTrackCount());
 	mMediaMetaData->setDuration(metaData.getDuration());
 
-	auto subscriptionIter = mGetMediaMetaDataSubscriptions.find(address);
+	auto subscriptionIter = mGetMediaMetaDataSubscriptions.find(adapterAddress);
 	if (subscriptionIter == mGetMediaMetaDataSubscriptions.end())
+		return;
+
+
+	auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
+	if (subscriptionDeviceIter == (subscriptionIter->second).end())
 		return;
 
 	pbnjson::JValue object = pbnjson::Object();
@@ -1621,7 +1669,7 @@ void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaDat
 	object.put("returnValue", true);
 	object.put("subscribed", true);
 	object.put("address", address);
-	object.put("adapterAddress", getManager()->getAddress());
+	object.put("adapterAddress", adapterAddress);
 
 
 	pbnjson::JValue metaDataObj = pbnjson::Object();
@@ -1635,17 +1683,22 @@ void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaDat
 
 	object.put("metaData", metaDataObj);
 
-	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
+	LS::SubscriptionPoint* subscriptionPoint = subscriptionDeviceIter->second;
 	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
-
 }
 
-void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &address)
+void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &adapterAddress,
+	const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
-	auto subscriptionIter = mGetMediaPlayStatusSubscriptions.find(address);
+	auto subscriptionIter = mGetMediaPlayStatusSubscriptions.find(adapterAddress);
 	if (subscriptionIter == mGetMediaPlayStatusSubscriptions.end())
+		return;
+
+
+	auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
+	if (subscriptionDeviceIter == (subscriptionIter->second).end())
 		return;
 
 	pbnjson::JValue object = pbnjson::Object();
@@ -1653,7 +1706,7 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 	object.put("returnValue", true);
 	object.put("subscribed", true);
 	object.put("address", address);
-	object.put("adapterAddress", getManager()->getAddress());
+	object.put("adapterAddress", adapterAddress);
 
 	pbnjson::JValue playStatusObj = pbnjson::Object();
 	playStatusObj.put("duration", (int32_t)playStatus.getDuration());
@@ -1662,7 +1715,7 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 
 	object.put("playbackStatus", playStatusObj);
 
-	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
+	LS::SubscriptionPoint* subscriptionPoint = subscriptionDeviceIter->second;
 	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
 }
 

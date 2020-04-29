@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,8 +70,10 @@ public:
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
-	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &address);
-	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &address);
+	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &adapterAddress,
+		const std::string &address);
+	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus,  const std::string &adapterAddress,
+		const std::string &address);
 	void volumeChanged(int volume, const std::string &adapterAddress, const std::string &address);
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus, const std::string &address);
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus,
@@ -79,6 +81,8 @@ public:
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address, const std::string &role);
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &adapterAddress, const std::string &address, const std::string &role);
 	void supportedNotificationEventsReceived(const BluetoothAvrcpSupportedNotificationEventList &events, const std::string &address);
+	void playerApplicationSettingsReceived(const BluetoothPlayerApplicationSettingsPropertiesList& properties,
+		const std::string& adapterAddress, const std::string& address);
 
 	/*
 	 * This will be deprecated on implementation of remoteFeaturesReceived with role.
@@ -127,11 +131,12 @@ private:
 	std::string shuffleEnumToString(BluetoothPlayerApplicationSettingsShuffle shuffle);
 	std::string scanEnumToString(BluetoothPlayerApplicationSettingsScan scan);
 	void appendCurrentApplicationSettings(pbnjson::JValue &object);
-	void notifySubscribersAboutApplicationSettings();
-	void updateFromPlayerApplicationSettingsProperties(const BluetoothPlayerApplicationSettingsPropertiesList &properties);
 
 	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error);
 	std::string findRemoteFeatures(const std::string &adapterAddress, const std::string &address);
+
+	LS::SubscriptionPoint* addSubscription(std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>>& subscriptions,
+		const std::string& adapterAddress, const std::string& deviceAddress);
 
 private:
 	std::string mEqualizer;
@@ -161,10 +166,10 @@ private:
 	std::unordered_map<std::string, LSUtils::ClientWatch*> mReceivePassThroughCommandWatches;
 	std::unordered_map<std::string, LSUtils::ClientWatch*> mGetSupportedNotificationEventsWatches;
 	std::map<std::string, LS::SubscriptionPoint*> mGetRemoteVolumeSubscriptions;
-	std::map<std::string, LS::SubscriptionPoint*> mGetMediaMetaDataSubscriptions;
-	std::map<std::string, LS::SubscriptionPoint*> mGetMediaPlayStatusSubscriptions;
 
-	LS::SubscriptionPoint mGetPlayerApplicationSettingsSubscriptions;
+	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaMetaDataSubscriptions;
+	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaPlayStatusSubscriptions;
+	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetPlayerApplicationSettingsSubscriptions;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
 	std::map<std::string, std::map<std::string, std::string>> mTGRemoteFeturesForMultipleAdapters;
