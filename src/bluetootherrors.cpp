@@ -236,9 +236,10 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_DELAY_REPORTING_ALREADY_ENABLED, "Delay reporting already enabled"},
 	{BT_ERR_DELAY_REPORTING_ALREADY_DISABLED, "Delay reporting already disabled"},
 	{BT_ERR_DELAY_REPORTING_DISABLED, "Delay reporting is  disabled, please enable it to use this api"},
-	{BT_ERR_REPOSITORY_PARAM_MISSING, "Required 'repository' parameter is not supplied"},
-	{BT_ERR_OBJECT_PARAM_MISSING, "Required 'object ' parameter is not supplied"},
-	{BT_ERR_NOT_NOT_SUPPORTED_BY_REMOTE_DEVICE, "feature is not supported by remote device"}
+	{BT_ERR_PBAP_REPOSITORY_PARAM_MISSING, "Required 'repository' parameter is not supplied"},
+	{BT_ERR_PBAP_OBJECT_PARAM_MISSING, "Required 'object ' parameter is not supplied"},
+	{BT_ERR_NOT_NOT_SUPPORTED_BY_REMOTE_DEVICE, "feature is not supported by remote device"},
+	{BT_ERR_PBAP_VCARD_HANDLE_PARAM_MISSING, "Required 'vCardHandle' parameter is not supplied"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)

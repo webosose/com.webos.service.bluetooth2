@@ -139,3 +139,12 @@ void bt_ready_msg2kernel(void)
 	BT_DEBUG("Get BTUSB_READY %ld.%ld PerfType:BtMngr PerfGroup:BT_INITIALIZED \n", (long)sec, msec );
 	write_kernel_log(logBuf);
 }
+
+std::string replaceString(std::string subject, const std::string& search, const std::string& replace) {
+    size_t pos = 0;
+    while ((pos = subject.find(search, pos)) != std::string::npos) {
+         subject.replace(pos, search.length(), replace);
+         pos += replace.length();
+    }
+    return subject;
+}
