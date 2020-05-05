@@ -180,6 +180,25 @@ void BluetoothAvrcpProfileService::propertiesChanged(const std::string &adapterA
 		auto it = mRemoteVolumes.find(address);
 		if (it != mRemoteVolumes.end())
 			mRemoteVolumes.erase(it);
+		/* Clear the remote features supported for the device */
+		clearRemoteFeatures(adapterAddress, address);
+	}
+}
+
+void BluetoothAvrcpProfileService::clearRemoteFeatures(const std::string &adapterAddress, const std::string &address)
+{
+	std::vector<std::string> *remoteFeatures = NULL;
+	remoteFeatures = findRemoteFeatures(adapterAddress, address, "CT");
+	if (remoteFeatures)
+	{
+		remoteFeatures->clear();
+		remoteFeatures = NULL;
+	}
+	remoteFeatures = findRemoteFeatures(adapterAddress, address, "TG");
+	if (remoteFeatures)
+	{
+		remoteFeatures->clear();
+		remoteFeatures = NULL;
 	}
 }
 
@@ -838,7 +857,7 @@ void BluetoothAvrcpProfileService::playerApplicationSettingsReceived(const Bluet
 	}
 }
 
-void BluetoothAvrcpProfileService::handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error)
+void BluetoothAvrcpProfileService::handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, std::string &address, BluetoothError error)
 {
 	if (BLUETOOTH_ERROR_NONE != error)
 	{
@@ -849,6 +868,7 @@ void BluetoothAvrcpProfileService::handlePlayserApplicationSettingsPropertiesSet
 	pbnjson::JValue responseObj = pbnjson::Object();
 	responseObj.put("returnValue", true);
 	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
 
 	LSUtils::postToClient(request, responseObj);
 }
@@ -861,12 +881,6 @@ bool BluetoothAvrcpProfileService::setPlayerApplicationSettings(LSMessage &messa
 	pbnjson::JValue requestObj;
 	BluetoothPlayerApplicationSettingsPropertiesList propertiesToChange;
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothAvrcpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_6(
                                     PROP(adapterAddress, string), PROP(address, string), PROP(equalizer, string),
@@ -889,19 +903,21 @@ bool BluetoothAvrcpProfileService::setPlayerApplicationSettings(LSMessage &messa
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
-		deviceAddress = requestObj["address"].asString();
-		if (!getManager()->isDeviceAvailable(deviceAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-			return true;
-		}
+		deviceAddress = convertToLower(requestObj["address"].asString());
 
-		if (!isDeviceConnected(deviceAddress))
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
 		}
 	}
+	if (!mImpl && !getImpl<BluetoothAvrcpProfile>(adapterAddress))
+        {
+                LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+                return true;
+        }
+
+
 
 	if (requestObj.hasKey("equalizer"))
 	{
@@ -989,15 +1005,18 @@ bool BluetoothAvrcpProfileService::setPlayerApplicationSettings(LSMessage &messa
 		pbnjson::JValue responseObj = pbnjson::Object();
 		responseObj.put("returnValue", true);
 		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", deviceAddress);
 
 		LSUtils::postToClient(request, responseObj);
 	}
 	else
 	{
 		BT_INFO("AVRCP", 0, "Service calls SIL API : setPlayerApplicationSettingsProperties");
-		getImpl<BluetoothAvrcpProfile>()->setPlayerApplicationSettingsProperties(propertiesToChange, std::bind(&BluetoothAvrcpProfileService::handlePlayserApplicationSettingsPropertiesSet, this, propertiesToChange, request, adapterAddress, _1));
+		getImpl<BluetoothAvrcpProfile>(adapterAddress)->
+			setPlayerApplicationSettingsProperties(propertiesToChange,
+					std::bind(&BluetoothAvrcpProfileService::handlePlayserApplicationSettingsPropertiesSet,
+						this, propertiesToChange, request, adapterAddress, deviceAddress, _1));
 	}
-
 
 	return true;
 }
@@ -1062,7 +1081,7 @@ bool BluetoothAvrcpProfileService::setAbsoluteVolume(LSMessage &message)
 				return true;
 		}
 	}
-	
+
 	//convert volume from percentage to volume level
 	volume = (int32_t)std::round((volume/100.0) * 127);
 	BluetoothError error = getImpl<BluetoothAvrcpProfile>(adapterAddress)->setAbsoluteVolume(deviceAddress, volume);
@@ -1119,7 +1138,7 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
-		deviceAddress = requestObj["address"].asString();
+		deviceAddress = convertToLower(requestObj["address"].asString());
 
 		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
@@ -1132,31 +1151,8 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint *subscriptionPoint = 0;
-
-		auto subscriptionIter = mGetRemoteVolumeSubscriptionsForMultipleAdapters.find(adapterAddress);
-		if (subscriptionIter == mGetRemoteVolumeSubscriptionsForMultipleAdapters.end())
-		{
-			std::map<std::string, LS::SubscriptionPoint*> getRemoteVolumeSubscriptionPoints;
-			subscriptionPoint = new LS::SubscriptionPoint;
-			subscriptionPoint->setServiceHandle(getManager());
-			getRemoteVolumeSubscriptionPoints.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
-			mGetRemoteVolumeSubscriptionsForMultipleAdapters.insert(std::pair<std::string,  std::map<std::string, LS::SubscriptionPoint*>>(adapterAddress , getRemoteVolumeSubscriptionPoints));
-		}
-		else
-		{
-			auto subscriptionDeviceIter = (subscriptionIter->second).find(deviceAddress);
-			if (subscriptionDeviceIter == (subscriptionIter->second).end())
-			{
-				subscriptionPoint = new LS::SubscriptionPoint;
-				subscriptionPoint->setServiceHandle(getManager());
-				(subscriptionIter->second).insert(std::pair<std::string,  LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
-			}
-			else
-			{
-			       subscriptionPoint = subscriptionDeviceIter->second;
-			}
-		}
+		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetRemoteVolumeSubscriptionsForMultipleAdapters,
+			adapterAddress, deviceAddress);
 
 		subscriptionPoint->subscribe(request);
 		subscribed = true;
@@ -1451,7 +1447,7 @@ bool BluetoothAvrcpProfileService::getRemoteFeatures(LSMessage &message)
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))
 	{
-		deviceAddress = requestObj["address"].asString();
+		deviceAddress = convertToLower(requestObj["address"].asString());
 
 		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
@@ -1465,57 +1461,110 @@ bool BluetoothAvrcpProfileService::getRemoteFeatures(LSMessage &message)
 	responseObj.put("returnValue", true);
 	responseObj.put("address", deviceAddress);
 
-	pbnjson::JValue remoteFeatureListObj = pbnjson::Array();
+	pbnjson::JValue remoteFeatureListObjCT = pbnjson::Array();
+	pbnjson::JValue remoteFeatureListObjTG= pbnjson::Array();
+	pbnjson::JValue remoteFeatureListObj= pbnjson::Array();
 
-	pbnjson::JValue remoteFeatureObj = pbnjson::Object();
-	remoteFeatureObj.put("role", "CT");
-	remoteFeatureObj.put("remoteFeature", findRemoteFeatures(adapterAddress, deviceAddress));
-	remoteFeatureListObj.append(remoteFeatureObj);
+	std::vector<std::string> *remoteFeaturesCT =
+		findRemoteFeatures(adapterAddress, deviceAddress, "CT");
+	if (remoteFeaturesCT)
+	{
+		for (auto featuresIter : *remoteFeaturesCT)
+		{
+			pbnjson::JValue remoteFeatureObj = pbnjson::Object();
+			remoteFeatureObj.put("remoteFeature", featuresIter);
+			remoteFeatureObj.put("role", "CT");
+			remoteFeatureListObj.append(remoteFeatureObj);
+		}
+	}
 
+	std::vector<std::string> *remoteFeaturesTG =
+		findRemoteFeatures(adapterAddress, deviceAddress, "TG");
+	if (remoteFeaturesTG)
+	{
+		for (auto featuresIter : *remoteFeaturesTG)
+		{
+			pbnjson::JValue remoteFeatureObj = pbnjson::Object();
+			remoteFeatureObj.put("remoteFeature", featuresIter);
+			remoteFeatureObj.put("role", "TG");
+			remoteFeatureListObj.append(remoteFeatureObj);
+		}
+	}
 	responseObj.put("remoteFeatures", remoteFeatureListObj);
+
 	LSUtils::postToClient(request, responseObj);
 
 	return true;
 }
 
-void BluetoothAvrcpProfileService::remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &adapterAddress, const std::string &address, const std::string &role)
+void BluetoothAvrcpProfileService::remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features,
+		const std::string &adapterAddress, const std::string &address, const std::string &role)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
+	std::map<std::string, std::map<std::string, std::vector<std::string>>> *remoteFeaturesSubscription;
 
-	auto remoteFeaturesIter = mTGRemoteFeturesForMultipleAdapters.find(adapterAddress);
-	if (remoteFeaturesIter == mTGRemoteFeturesForMultipleAdapters.end())
+	/* when remote device is TG */
+	if ("CT" == role)
 	{
-		std::map<std::string, std::string> remoteFeatures;
-		remoteFeatures.insert(std::pair<std::string, std::string>(address, remoteFeaturesEnumToString(features)));
-		mTGRemoteFeturesForMultipleAdapters.insert(std::pair<std::string, std::map<std::string, std::string>>(adapterAddress, remoteFeatures));
+		remoteFeaturesSubscription = &mTGRemoteFeturesForMultipleAdapters;
+	}
+	/* when remote device is CT*/
+	else
+	{
+		remoteFeaturesSubscription = &mCTRemoteFeturesForMultipleAdapters;
+	}
+	auto remoteFeaturesIter = remoteFeaturesSubscription->find(adapterAddress);
+        if (remoteFeaturesIter == remoteFeaturesSubscription->end())
+        {
+                std::map<std::string, std::vector<std::string>> remoteFeatures;
+                std::vector<std::string> featureString;
+                featureString.push_back(remoteFeaturesEnumToString(features));
+                remoteFeatures.insert(std::pair<std::string, std::vector<std::string>>(address, featureString));
+                remoteFeaturesSubscription->insert(std::pair<std::string,
+                                std::map<std::string, std::vector<std::string>>>(adapterAddress, remoteFeatures));
+        }
+        else
+        {
+                auto remoteFeatureIter = (remoteFeaturesIter->second).find(address);
+                if (remoteFeatureIter == (remoteFeaturesIter->second).end())
+                {
+                        std::map<std::string, std::vector<std::string>> remoteFeatures;
+                        std::vector<std::string> featureString;
+                        featureString.push_back(remoteFeaturesEnumToString(features));
+                        (remoteFeaturesIter->second).insert(std::pair<std::string, std::vector<std::string>>(address, featureString));
+                }
+                else
+                {
+
+                        (remoteFeatureIter->second).push_back(remoteFeaturesEnumToString(features));
+                }
+        }
+
+}
+
+std::vector<std::string>* BluetoothAvrcpProfileService::findRemoteFeatures(const std::string &adapterAddress, const std::string &address,
+	std::string role)
+{
+	std::map<std::string, std::map<std::string, std::vector<std::string>>> *remoteFeatures;
+	std::vector<std::string> *features = NULL;
+	if ("CT" == role)
+	{
+		remoteFeatures = &mCTRemoteFeturesForMultipleAdapters;
 	}
 	else
 	{
-		auto remoteFeatureIter = (remoteFeaturesIter->second).find(address);
-		if (remoteFeatureIter == (remoteFeaturesIter->second).end())
-		{
-			std::map<std::string, LSUtils::ClientWatch*> remoteFeatures;
-
-			(remoteFeaturesIter->second).insert(std::pair<std::string, std::string>(address, remoteFeaturesEnumToString(features)));
-		}
-		else
-		{
-			(remoteFeatureIter->second) = remoteFeaturesEnumToString(features);
-		}
+		remoteFeatures = &mTGRemoteFeturesForMultipleAdapters;
 	}
-}
-
-std::string BluetoothAvrcpProfileService::findRemoteFeatures(const std::string &adapterAddress, const std::string &address)
-{
-	auto remoteFeaturesIter = mTGRemoteFeturesForMultipleAdapters.find(adapterAddress);
-	if (remoteFeaturesIter != mTGRemoteFeturesForMultipleAdapters.end())
+	auto remoteFeaturesIter = remoteFeatures->find(adapterAddress);
+	if (remoteFeaturesIter != remoteFeatures->end())
 	{
 		auto remoteFeatureIter = (remoteFeaturesIter->second).find(address);
 		if (remoteFeatureIter != (remoteFeaturesIter->second).end())
-			return remoteFeatureIter->second;
+		{
+			features = &remoteFeatureIter->second;
+		}
 	}
-
-	return "none";
+	return features;
 }
 
 void BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared(const std::string &adapterAddress, const std::string &address)

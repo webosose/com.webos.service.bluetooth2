@@ -132,8 +132,10 @@ private:
 	std::string scanEnumToString(BluetoothPlayerApplicationSettingsScan scan);
 	void appendCurrentApplicationSettings(pbnjson::JValue &object);
 
-	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error);
-	std::string findRemoteFeatures(const std::string &adapterAddress, const std::string &address);
+	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties,
+			LS::Message &request, std::string &adapterAddress, std::string &address, BluetoothError error);
+	std::vector<std::string> *findRemoteFeatures(const std::string& adapterAddress, const std::string& address, std::string role);
+	void clearRemoteFeatures(const std::string &adapterAddress, const std::string &address);
 
 	LS::SubscriptionPoint* addSubscription(std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>>& subscriptions,
 		const std::string& adapterAddress, const std::string& deviceAddress);
@@ -172,7 +174,10 @@ private:
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetPlayerApplicationSettingsSubscriptions;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
-	std::map<std::string, std::map<std::string, std::string>> mTGRemoteFeturesForMultipleAdapters;
+	/* Features supported by remote AVRCP target device */
+	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
+	/* Features supported by remote AVRCP controller device */
+	std::map<std::string, std::map<std::string, std::vector<std::string>>> mCTRemoteFeturesForMultipleAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H
