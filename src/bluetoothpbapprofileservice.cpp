@@ -873,9 +873,12 @@ bool BluetoothPbapProfileService::getPhoneBookProperties(LSMessage &message)
 		return true;
 
 	std::string adapterAddress;
+
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
-	setErrorProperties();
+
+	initializePbapApplicationParameters();
+
 	std::string address =  requestObj["address"].asString();
 
 	if (request.isSubscription())
@@ -884,33 +887,40 @@ bool BluetoothPbapProfileService::getPhoneBookProperties(LSMessage &message)
 		subscribed = true;
 	}
 
+	pbapApplicationParameters.setFolder("No folder is selected");
+
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	auto getPhoneBookPropertiesResultCallback = [this, address, adapterAddress, requestMessage, subscribed](BluetoothError error, const BluetoothPropertiesList &properties) {
+	auto getPhoneBookPropertiesResultCallback = [this, address, adapterAddress, requestMessage, subscribed](BluetoothError error, BluetoothPbapApplicationParameters &applicationParams) {
 		LS::Message request(requestMessage);
 		bool success =false;
 		if (error == BLUETOOTH_ERROR_NONE)
 		{
-			updateFromPbapProperties(properties);
+			updateFromPbapProperties(applicationParams);
 			success =true;
 		}
 		notifyGetPhoneBookPropertiesRequest (request, error, adapterAddress, address, subscribed, success);
 	};
+
 	getImpl<BluetoothPbapProfile>(adapterAddress)->getPhoneBookProperties(address,getPhoneBookPropertiesResultCallback);
+
 	return true;
 }
 
 void BluetoothPbapProfileService::appendCurrentProperties(pbnjson::JValue &object)
 {
 	BT_INFO("PBAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
-	if( retrieveErrorCodeText(BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE) == getFolder())
+	if( retrieveErrorCodeText(BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE) == pbapApplicationParameters.getFolder())
 		return;
+
 	pbnjson::JValue propertyObj = pbnjson::Object();
-	propertyObj.put("repository",getFolder());
-	propertyObj.put("databaseIdentifier", getDatabaseIdentifier());
-	propertyObj.put("primaryVersionCounter", getPrimaryCounter());
-	propertyObj.put("secondaryVersionCounter", getSecondaryCounter());
-	propertyObj.put("fixedImageSize", getFixedImageSize());
+
+	propertyObj.put("repository",pbapApplicationParameters.getFolder());
+	propertyObj.put("databaseIdentifier", pbapApplicationParameters.getDataBaseIdentifier());
+	propertyObj.put("primaryVersionCounter", pbapApplicationParameters.getPrimaryCounter());
+	propertyObj.put("secondaryVersionCounter", pbapApplicationParameters.getSecondaryCounter());
+	propertyObj.put("fixedImageSize", pbapApplicationParameters.getFixedImageSize());
+
 	object.put("properties", propertyObj);
 }
 
@@ -944,63 +954,29 @@ void BluetoothPbapProfileService::notifySubscribersAboutPropertiesChange(const s
 	LSUtils::postToSubscriptionPoint(&mGetPropertiesSubscriptions, responseObj);
 }
 
-void BluetoothPbapProfileService::profilePropertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties)
+void BluetoothPbapProfileService::profilePropertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPbapApplicationParameters &properties)
 {
 	BT_DEBUG("Bluetooth PBAP properties have changed");
-	if(updateFromPbapProperties(properties))
-	{
-		notifySubscribersAboutPropertiesChange(adapterAddress, address);
-	}
+	updateFromPbapProperties(properties);
+	notifySubscribersAboutPropertiesChange(adapterAddress, address);
 }
 
-bool BluetoothPbapProfileService::updateFromPbapProperties(const BluetoothPropertiesList &properties)
+void BluetoothPbapProfileService::updateFromPbapProperties(BluetoothPbapApplicationParameters &applicationParams)
 {
-	bool changed = false;
-	BT_INFO("PBAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
-
-	for(auto prop : properties)
-	{
-		switch (prop.getType())
-		{
-		case BluetoothProperty::Type::FOLDER:
-			mFolder = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("PBAP Current folder has changed to %s", mFolder.c_str());
-			break;
-		case BluetoothProperty::Type::PRIMARY_COUNTER:
-			mPrimaryCounter = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("PBAP primary version counter has changed to %s", mPrimaryCounter.c_str());
-			break;
-		case BluetoothProperty::Type::SECONDERY_COUNTER:
-			mSecondaryCounter = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("PBAP secondary version has changed to %s", mSecondaryCounter.c_str());
-			break;
-		case BluetoothProperty::Type::DATABASE_IDENTIFIER:
-			mDatabaseIdentifier = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("PBAP persistent database identifier version has changed to %s", mDatabaseIdentifier.c_str());
-			break;
-		case BluetoothProperty::Type::FIXED_IMAGE_SIZE:
-			mFixedImageSize = prop.getValue<bool>();
-			changed = true;
-			BT_DEBUG("PBAP support for fixed image size has changed to %d", mFixedImageSize);
-			break;
-		default:
-			break;
-		}
-	}
-	return changed;
+	pbapApplicationParameters.setFolder(applicationParams.getFolder());
+	pbapApplicationParameters.setPrimaryCounter(applicationParams.getPrimaryCounter());
+	pbapApplicationParameters.setSecondaryCounter(applicationParams.getSecondaryCounter());
+	pbapApplicationParameters.setDataBaseIdentifier(applicationParams.getDataBaseIdentifier());
+	pbapApplicationParameters.setFixedImageSize(applicationParams.getFixedImageSize());
 }
 
-void BluetoothPbapProfileService::setErrorProperties()
+void BluetoothPbapProfileService::initializePbapApplicationParameters()
 {
-	mFolder = retrieveErrorCodeText(BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE);
-	mPrimaryCounter = "NULL";
-	mSecondaryCounter = "NULL";
-	mDatabaseIdentifier = "NULL";
-	mFixedImageSize = false;
+	pbapApplicationParameters.setFolder("NULL");
+	pbapApplicationParameters.setPrimaryCounter("NULL");
+	pbapApplicationParameters.setSecondaryCounter("NULL");
+	pbapApplicationParameters.setDataBaseIdentifier("NULL");
+	pbapApplicationParameters.setFixedImageSize(false);
 }
 
 bool BluetoothPbapProfileService::pullvCard(LSMessage &message)
