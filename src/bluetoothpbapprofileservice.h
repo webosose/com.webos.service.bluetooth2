@@ -84,8 +84,8 @@ private:
 	void notifyAccessRequestConfirmation(uint64_t requestId);
 	void deleteAccessRequestId(const std::string &requestIdStr);
 	void deleteAccessRequest(const std::string &requestId);
-	bool updateFromPbapProperties(const BluetoothPropertiesList &properties);
-	void profilePropertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
+	void updateFromPbapProperties(BluetoothPbapApplicationParameters &applicationParams);
+	void profilePropertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPbapApplicationParameters &properties);
 
 	bool notifyAccessRequestListenerDropped();
 	bool prepareConfirmationRequest(LS::Message &request, pbnjson::JValue &requestObj, bool accept);
@@ -100,12 +100,7 @@ private:
 	void setFolderRepository(const std::string &repository)
 	{ this->mFolderRepository = repository; }
 	std::string getFolderRepository() const { return mFolderRepository; }
-	std::string getFolder() const { return mFolder; }
-	std::string getPrimaryCounter() const { return mPrimaryCounter; }
-	std::string getSecondaryCounter() const { return mSecondaryCounter; }
-	std::string getDatabaseIdentifier() const { return mDatabaseIdentifier; }
-	bool getFixedImageSize() const { return mFixedImageSize; }
-	void setErrorProperties();
+	void initializePbapApplicationParameters();
 	std::string buildStorageDirPath(const std::string &path, const std::string &address);
 
 private:
@@ -114,13 +109,10 @@ private:
 	uint64_t mRequestIndex;
 	uint32_t mNextRequestId;
 	LS::SubscriptionPoint mGetPropertiesSubscriptions;
-	std::string mFolder;
 	std::string mFolderObject;
 	std::string mFolderRepository;
-	std::string mPrimaryCounter;
-	std::string mSecondaryCounter;
-	std::string mDatabaseIdentifier;
-	bool mFixedImageSize;
+	BluetoothPbapApplicationParameters pbapApplicationParameters;
+
 };
 
 #endif // BLUETOOTHPBAPPROFILESERVICE_H
