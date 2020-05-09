@@ -23,6 +23,9 @@
 #include <luna-service2/lunaservice.hpp>
 #include <pbnjson.hpp>
 #include "bluetoothprofileservice.h"
+#include "bluetootherrors.h"
+
+using paramList =  std::map<std::string, BluetoothErrorCode>;
 
 class BluetoothPbapProfileService : public BluetoothProfileService,
                                     public BluetoothPbapStatusObserver
@@ -46,12 +49,15 @@ public:
 	bool prepareGetvCardFilters(LS::Message &request, pbnjson::JValue &requestObj);
 	bool pullvCard(LSMessage &message);
 	bool preparePullVcard(LS::Message &request, pbnjson::JValue &requestObj);
+	bool searchPhoneBook(LSMessage &message);
+	bool prepareSearchPhoneBook(LS::Message &request, pbnjson::JValue &requestObj);
+	bool pullPhoneBook(LSMessage &message);
 	void accessRequested(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void initialize();
 	void initialize(const std::string &adapterAddress);
 	void propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
 	void propertiesChanged(const std::string &address, BluetoothPropertiesList properties);
-
+	void transferStatusChanged(const std::string &adapterAddress, const std::string &address, const std::string &destinationPath, const std::string &objectPath, const std::string &state);
 private:
 	class AccessRequest
 	{
@@ -75,6 +81,7 @@ private:
 	pbnjson::JValue createJsonFilterList(std::list<std::string> filters);
 	void createAccessRequest(BluetoothPbapAccessRequestId accessRequestId, const std::string &address, const std::string &deviceName);
 	void notifyVCardListingRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success);
+	void notifySearchPhoneBookRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success);
 	pbnjson::JValue createJsonVCardListing(BluetoothPbapVCardList &list);
 	void notifySubscribersAboutPropertiesChange(const std::string &adapterAddress, const std::string &address);
 	void notifyGetPhoneBookPropertiesRequest (LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, bool subscribed, bool success);
@@ -102,7 +109,11 @@ private:
 	std::string getFolderRepository() const { return mFolderRepository; }
 	void initializePbapApplicationParameters();
 	std::string buildStorageDirPath(const std::string &path, const std::string &address);
-
+	bool parseGetPhoneBookParam(LS::Message &request, pbnjson::JValue &requestObj);
+	void updateParseError(LS::Message &request , pbnjson::JValue &requestObj ,int parseError, paramList &mandatoryParamList);
+	bool updateMissingParamError(LS::Message &request , pbnjson::JValue &requestObj, paramList &mandatoryParamList);
+	void sendGetPhoneBookResponse(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, const std::string &destinationFile,const bool &subscribed);
+	void appendGenericPullResponse(pbnjson::JValue &responseObj, const std::string &adapterAddress, const std::string &address, const std::string &destinationFile);
 private:
 	LSUtils::ClientWatch *mIncomingAccessRequestWatch;
 	bool mAccessRequestsAllowed;
@@ -112,7 +123,7 @@ private:
 	std::string mFolderObject;
 	std::string mFolderRepository;
 	BluetoothPbapApplicationParameters pbapApplicationParameters;
-
+	std::map<std::string, LS::SubscriptionPoint*> mGetPhoneBookSubscriptions;
 };
 
 #endif // BLUETOOTHPBAPPROFILESERVICE_H

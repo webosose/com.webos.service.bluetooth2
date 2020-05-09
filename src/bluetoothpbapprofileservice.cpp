@@ -43,6 +43,8 @@ BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, getPhoneBookProperties)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, getvCardFilters)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, pullvCard)
+		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, searchPhoneBook)
+		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, pullPhoneBook)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, awaitAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, acceptAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, rejectAccessRequest)
@@ -135,6 +137,33 @@ void BluetoothPbapProfileService::propertiesChanged(const std::string &adapterAd
 void BluetoothPbapProfileService::propertiesChanged(const std::string &address, BluetoothPropertiesList properties)
 {
 	BluetoothProfileService::propertiesChanged(address, properties);
+}
+
+void BluetoothPbapProfileService::transferStatusChanged(const std::string &adapterAddress, const std::string &address, const std::string &destinationPath, const std::string &objectPath, const std::string &state)
+{
+	BT_INFO("PBAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("destinationFile",destinationPath);
+	responseObj.put("status",state);
+
+	auto itr = mGetPhoneBookSubscriptions.find(objectPath);
+	if(itr != mGetPhoneBookSubscriptions.end())
+	{
+		LS::SubscriptionPoint* subscriptionPoint = itr->second;
+		if(("completed" == state)||("error" == state))
+		{
+			responseObj.put("subscribed",false);
+			LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+			mGetPhoneBookSubscriptions.erase(itr);
+			delete subscriptionPoint;
+			return;
+		}
+
+		responseObj.put("subscribed",true);
+		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+	}
 }
 
 void BluetoothPbapProfileService::setAccessRequestsAllowed(bool state)
@@ -772,6 +801,7 @@ bool BluetoothPbapProfileService::vCardListing(LSMessage &message)
 		return true;
 
 	std::string address =  requestObj["address"].asString();
+
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 	auto vCardListingResultCallback = [this, address, adapterAddress, requestMessage](BluetoothError error, std::map<std::string, std::string> &list) {
@@ -781,11 +811,127 @@ bool BluetoothPbapProfileService::vCardListing(LSMessage &message)
 		else
 			notifyVCardListingRequest(request, error, adapterAddress, address, list, true);
 	};
+
 	getImpl<BluetoothPbapProfile>(adapterAddress)->vCardListing(address, vCardListingResultCallback);
 	return true;
 }
 
+bool BluetoothPbapProfileService::prepareSearchPhoneBook(LS::Message &request, pbnjson::JValue &requestObj)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(adapterAddress, string), PROP(address, string), PROP(order, string), OBJECT(filter, OBJSCHEMA_2(PROP(key, string), PROP(value, string)))) REQUIRED_2(address, filter));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (JSON_PARSE_SCHEMA_ERROR != parseError)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else if (!requestObj.hasKey("filter"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_PBAP_FILTER_PARAM_MISSING);
+		}
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+
+	std::string adapterAddress;
+	if(requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = getManager()->getAdapter(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return false;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return false;
+	}
+
+	std::string deviceAddress = requestObj["address"].asString();
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return false;
+	}
+
+	return true;
+}
+
+bool BluetoothPbapProfileService::searchPhoneBook(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+
+	if (!prepareSearchPhoneBook(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string address =  requestObj["address"].asString();
+
+	std::string searchOrder = "indexed";
+	if(requestObj.hasKey("order"))
+		searchOrder =  requestObj["order"].asString();
+
+	std::string filterKey, filterValue;
+	if (requestObj.hasKey("filter"))
+	{
+		auto searchFiltersObj = requestObj["filter"];
+
+		if (searchFiltersObj.hasKey("key"))
+			filterKey = searchFiltersObj["key"].asString();
+
+		if (searchFiltersObj.hasKey("value"))
+			filterValue = searchFiltersObj["value"].asString();
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto SearchPhoneBookResultCallback = [this, address, adapterAddress, requestMessage](BluetoothError error, std::map<std::string, std::string> &list) {
+		LS::Message request(requestMessage);
+		if (BLUETOOTH_ERROR_NONE != error)
+			notifySearchPhoneBookRequest(request, error, adapterAddress, address, list, false);
+		else
+			notifySearchPhoneBookRequest(request, error, adapterAddress, address, list, true);
+	};
+
+	getImpl<BluetoothPbapProfile>(adapterAddress)->searchPhoneBook(address, searchOrder, filterKey, filterValue, SearchPhoneBookResultCallback);
+
+	return true;
+}
+
 void BluetoothPbapProfileService::notifyVCardListingRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success)
+{
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	if (!success)
+	{
+		LSUtils::respondWithError(request, error);
+		return;
+	}
+
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("returnValue", success);
+	responseObj.put("vcfHandles", createJsonVCardListing(list));
+	LSUtils::postToClient(request, responseObj);
+	LSMessageUnref(request.get());
+}
+
+void BluetoothPbapProfileService::notifySearchPhoneBookRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, BluetoothPbapVCardList &list, bool success)
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -834,6 +980,7 @@ bool BluetoothPbapProfileService::prepareGetPhoneBookProperties(LS::Message &req
 
 		return false;
 	}
+
 	std::string adapterAddress;
 	if(requestObj.hasKey("adapterAddress"))
 		adapterAddress = requestObj["adapterAddress"].asString();
@@ -846,6 +993,7 @@ bool BluetoothPbapProfileService::prepareGetPhoneBookProperties(LS::Message &req
 		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
 		return false;
 	}
+
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
 	{
@@ -859,6 +1007,7 @@ bool BluetoothPbapProfileService::prepareGetPhoneBookProperties(LS::Message &req
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 		return false;
 	}
+
 	return true;
 }
 
@@ -1038,19 +1187,151 @@ bool BluetoothPbapProfileService::pullvCard(LSMessage &message)
 	}
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	auto pullResultCallback = [this, address, adapterAddress, requestMessage, destinationFile](BluetoothError error, uint64_t bytesTransferred, bool success) {
+	auto pullResultCallback = [this, address, adapterAddress, requestMessage, destinationFile](BluetoothError error) {
 		LS::Message request(requestMessage);
 
 		if (BLUETOOTH_ERROR_NONE != error)
-			notifyPullVcardRequest(request, error, adapterAddress, address, destinationFile, success);
+			notifyPullVcardRequest(request, error, adapterAddress, address, destinationFile, false);
 		else
-			notifyPullVcardRequest(request, error, adapterAddress, address, destinationFile, success);
+			notifyPullVcardRequest(request, error, adapterAddress, address, destinationFile, true);
 	};
 
 	getImpl<BluetoothPbapProfile>(adapterAddress)->pullvCard(address, destinationFile, vCardHandle, vCardVersion, vCardFilters, pullResultCallback);
 
 	return true;
 
+}
+
+bool BluetoothPbapProfileService::pullPhoneBook(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+
+	if (!parseGetPhoneBookParam(request, requestObj))
+		return true;
+
+	std::string address =  requestObj["address"].asString();
+	std::string check_destinationFile = requestObj["destinationFile"].asString();
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;;
+	}
+
+	if(!isDeviceConnected(adapterAddress, address))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+	std::string vCardVersion = "2.1";
+	if (requestObj.hasKey("vCardVersion"))
+		vCardVersion = requestObj["vCardVersion"].asString();
+
+	std::string destinationFile = buildStorageDirPath(check_destinationFile, address);
+
+	if (!checkPathExists(destinationFile)) {
+		std::string errorMessage = "Supplied destination path ";
+		errorMessage += destinationFile;
+		errorMessage += " does not exist or is invalid";
+		LSUtils::respondWithError(request, errorMessage, BT_ERR_DESTPATH_INVALID);
+		return true;
+	}
+
+	BluetoothPbapVCardFilterList vCardFilters;
+
+	if (requestObj.hasKey("filterFields"))
+	{
+		auto vCardFiltersObjArray = requestObj["filterFields"];
+		for (int n = 0; n < vCardFiltersObjArray.arraySize(); n++)
+		{
+			pbnjson::JValue element = vCardFiltersObjArray[n];
+			vCardFilters.push_back(element.asString());
+		}
+	}
+
+	uint16_t startIndex = 0;
+	if (requestObj.hasKey("startOffset"))
+		startIndex = (uint16_t)requestObj["startOffset"].asNumber<int32_t>();
+
+	uint16_t maxListCount = 65535;
+	if (requestObj.hasKey("maxListCount"))
+		maxListCount = (uint16_t)requestObj["maxListCount"].asNumber<int32_t>();
+
+	bool subscribed = false;
+	if (request.isSubscription())
+	{
+		subscribed = true;
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto pullResultCallback = [this, address, adapterAddress, requestMessage,subscribed, destinationFile](BluetoothError error, std::string objectPath) {
+		LS::Message request(requestMessage);
+		if((subscribed)&&(BLUETOOTH_ERROR_NONE == error))
+		{
+			LS::SubscriptionPoint* subscriptionPoint = new LS::SubscriptionPoint;
+			mGetPhoneBookSubscriptions.insert({objectPath,subscriptionPoint});
+			subscriptionPoint->setServiceHandle(getManager());
+			subscriptionPoint->subscribe(request);
+		}
+
+		sendGetPhoneBookResponse(request, error, adapterAddress, address, destinationFile, subscribed);
+	};
+
+	getImpl<BluetoothPbapProfile>(adapterAddress)->pullPhoneBook(address, destinationFile, vCardVersion, vCardFilters, startIndex ,maxListCount,pullResultCallback);
+	return true;
+}
+
+bool BluetoothPbapProfileService::parseGetPhoneBookParam(LS::Message &request, pbnjson::JValue &requestObj)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_8(PROP(address, string), PROP(adapterAddress, string),
+												PROP(destinationFile, string), PROP(startOffset, integer),
+												PROP(vCardVersion, string),ARRAY(filterFields,string),
+												PROP(maxListCount, integer),PROP_WITH_VAL_1(subscribe, boolean, true))
+												REQUIRED_3(address,destinationFile,subscribe));
+
+	paramList localParam ={{"address", BT_ERR_ADDR_PARAM_MISSING},
+							   {"destinationFile", BT_ERR_DESTFILE_PARAM_MISSING},
+							   {"subscribe", BT_ERR_MTHD_NOT_SUBSCRIBED}};
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		updateParseError(request,requestObj,parseError,localParam);
+		return false;
+	}
+
+	return true;
+}
+
+bool BluetoothPbapProfileService::updateMissingParamError(LS::Message &request , pbnjson::JValue &requestObj, paramList &mandatoryParamList)
+{
+	for (auto iterParam : mandatoryParamList)
+	{
+		if (!requestObj.hasKey(iterParam.first))
+			{
+				LSUtils::respondWithError(request, iterParam.second);
+				return true;
+			}
+	}
+	return false;
+}
+
+void BluetoothPbapProfileService::updateParseError(LS::Message &request , pbnjson::JValue &requestObj, int parseError, paramList &mandatoryParamList)
+{
+	if (JSON_PARSE_SCHEMA_ERROR != parseError)
+		LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+	else if (updateMissingParamError(request,requestObj,mandatoryParamList))
+		return;
+	else
+		LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
 }
 
 bool BluetoothPbapProfileService::preparePullVcard(LS::Message &request, pbnjson::JValue &requestObj)
@@ -1113,21 +1394,37 @@ bool BluetoothPbapProfileService::preparePullVcard(LS::Message &request, pbnjson
 
 void BluetoothPbapProfileService::notifyPullVcardRequest(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, const std::string &destinationFile, bool success)
 {
-	pbnjson::JValue responseObj = pbnjson::Object();
-
 	if (!success)
 	{
 		LSUtils::respondWithError(request, error);
 		return;
 	}
-
-	responseObj.put("adapterAddress", adapterAddress);
-	responseObj.put("address", address);
-	responseObj.put("returnValue", success);
-	responseObj.put("destinationFile", destinationFile);
+	pbnjson::JValue responseObj = pbnjson::Object();
+	appendGenericPullResponse(responseObj,adapterAddress,address,destinationFile);
 	LSUtils::postToClient(request, responseObj);
 	LSMessageUnref(request.get());
+}
 
+void BluetoothPbapProfileService::sendGetPhoneBookResponse(LS::Message &request, BluetoothError error, const std::string &adapterAddress, const std::string &address, const std::string &destinationFile,const bool &subscribed)
+{
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return;
+	}
+	pbnjson::JValue responseObj = pbnjson::Object();
+	appendGenericPullResponse(responseObj,adapterAddress,address,destinationFile);
+	responseObj.put("subscribed", subscribed);
+	LSUtils::postToClient(request, responseObj);
+	LSMessageUnref(request.get());
+}
+
+void BluetoothPbapProfileService::appendGenericPullResponse(pbnjson::JValue &responseObj, const std::string &adapterAddress, const std::string &address, const std::string &destinationFile)
+{
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("returnValue", true);
+	responseObj.put("destinationFile", destinationFile);
 }
 
 std::string BluetoothPbapProfileService::buildStorageDirPath(const std::string &path, const std::string &address)
