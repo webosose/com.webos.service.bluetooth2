@@ -155,6 +155,10 @@ void BluetoothPbapProfileService::transferStatusChanged(const std::string &adapt
 		if(("completed" == state)||("error" == state))
 		{
 			responseObj.put("subscribed",false);
+			if ("error" == state)
+				responseObj.put("returnValue",false);
+			else
+				responseObj.put("returnValue",true);
 			LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
 			mGetPhoneBookSubscriptions.erase(itr);
 			delete subscriptionPoint;
@@ -162,6 +166,7 @@ void BluetoothPbapProfileService::transferStatusChanged(const std::string &adapt
 		}
 
 		responseObj.put("subscribed",true);
+		responseObj.put("returnValue",true);
 		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
 	}
 }
