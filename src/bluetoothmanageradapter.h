@@ -118,6 +118,10 @@ public:
 	uint32_t getClassOfDevice() const { return mClassOfDevice; }
 	BluetoothPairState& getPairState() { return mPairState; }
 
+#ifdef MULTI_SESSION_SUPPORT
+	int32_t getHciIndex() const { return mHciIndex; }
+#endif
+
 	std::unordered_map<std::string, BluetoothDevice*> getDevices() const { return mDevices; }
 
 	std::vector<BluetoothServiceClassInfo> getSupportedServiceClasses(){ return mSupportedServiceClasses; }
@@ -164,6 +168,10 @@ private:
 	uint32_t mDiscoveryTimeout;
 	uint32_t mDiscoverableTimeout;
 	uint32_t mClassOfDevice;
+
+#ifdef MULTI_SESSION_SUPPORT
+	int32_t mHciIndex;
+#endif
 
 	BluetoothAdapter* mAdapter;
 	std::string mName;

@@ -164,8 +164,17 @@ BluetoothManagerService::BluetoothManagerService() :
 	registerCategory("/le", LS_CATEGORY_TABLE_NAME(le), NULL, NULL);
 	setCategoryData("/le", this);
 
+#ifdef MULTI_SESSION_SUPPORT
+	for (int32_t idx = 0; idx < MAX_SUBSCRIPTION_SESSIONS; idx++)
+	{
+		mGetStatusSubscriptions[idx].setServiceHandle(this);
+		mQueryAvailableSubscriptions[idx].setServiceHandle(this);
+	}
+#else
 	mGetStatusSubscriptions.setServiceHandle(this);
 	mQueryAvailableSubscriptions.setServiceHandle(this);
+#endif
+
 	mGetAdvStatusSubscriptions.setServiceHandle(this);
 	mGetKeepAliveStatusSubscriptions.setServiceHandle(this);
 }
@@ -216,6 +225,70 @@ bool BluetoothManagerService::isAdapterAvailable(const std::string &address)
 
 bool BluetoothManagerService::isRequestedAdapterAvailable(LS::Message &request, const pbnjson::JValue &requestObj, std::string &adapterAddress)
 {
+#ifdef MULTI_SESSION_SUPPORT
+	auto message = request.get();
+	auto displayId = LSUtils::getDisplaySetIdIndex(*message, this);
+
+#if 0
+	/*Give high prioriy to adapterAddress*/
+	if (requestObj.hasKey("adapterAddress"))
+	{
+		BT_DEBUG("Request contains adapterAddress so assigning adapterAddress");
+		/*TODO Currently priority is given to adapterAddress so returning HOST
+		 Later priority should be given to container session & adapterAddress
+		 assigned to container session should be returned*/
+		displayId = LSUtils::DisplaySetId::HOST;
+	}
+#endif
+
+	if (displayId != LSUtils::DisplaySetId::HOST)
+	{
+		for (auto it = mAdaptersInfo.begin(); it != mAdaptersInfo.end(); it++)
+		{
+			if (it->second->getHciIndex() == displayId)
+			{
+				BT_DEBUG("Adapter for displayId %d found adapterAddress %s", displayId, it->second->getAddress().c_str());
+				adapterAddress = it->second->getAddress();
+				return true;
+			}
+		}
+
+		BT_DEBUG("Adapter for displayId %d is not found", displayId);
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return false;
+	}
+	/*Request either from host or no session exist*/
+	else if (displayId == LSUtils::DisplaySetId::HOST)
+	{
+		if (requestObj.hasKey("adapterAddress"))
+		{
+			adapterAddress = convertToLower(requestObj["adapterAddress"].asString());
+			if (!isValidAddress(adapterAddress) || !isAdapterAvailable(adapterAddress))
+			{
+				LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
+				return false;
+			}
+			BT_DEBUG("Host request Adapter address %s", adapterAddress.c_str());
+		}
+		else
+		{
+			BT_DEBUG("Host request doesn't contain adapterAddress so using default adapter address %s", mAddress.c_str());
+			adapterAddress = mAddress;
+			if (!isAdapterAvailable(adapterAddress))
+			{
+				LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+				return false;
+			}
+		}
+	}
+	else
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return false;
+	}
+
+	return true;
+#else
 	if (requestObj.hasKey("adapterAddress"))
 	{
 		adapterAddress = convertToLower(requestObj["adapterAddress"].asString());
@@ -236,6 +309,7 @@ bool BluetoothManagerService::isRequestedAdapterAvailable(LS::Message &request, 
 	}
 
 	return true;
+#endif
 }
 
 bool BluetoothManagerService::isRoleEnable(const std::string &address, const std::string &role)
@@ -418,11 +492,20 @@ void BluetoothManagerService::notifySubscribersAboutStateChange()
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
 
+#ifdef MULTI_SESSION_SUPPORT
+	for (int i = 0; i < MAX_SUBSCRIPTION_SESSIONS; i++)
+	{
+		appendCurrentStatus(responseObj, (LSUtils::DisplaySetId)i);
+		responseObj.put("returnValue", true);
+		LSUtils::postToSubscriptionPoint(&(mGetStatusSubscriptions[i]), responseObj);
+	}
+#else
 	appendCurrentStatus(responseObj);
 
 	responseObj.put("returnValue", true);
 
 	LSUtils::postToSubscriptionPoint(&mGetStatusSubscriptions, responseObj);
+#endif
 }
 
 void BluetoothManagerService::notifySubscribersAdvertisingChanged(std::string adapterAddress)
@@ -440,12 +523,22 @@ void BluetoothManagerService::notifySubscribersAdvertisingChanged(std::string ad
 void BluetoothManagerService::notifySubscribersAdaptersChanged()
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
+#ifdef MULTI_SESSION_SUPPORT
+	for (int32_t i = 0; i < MAX_SUBSCRIPTION_SESSIONS; i++)
+	{
+		appendAvailableStatus(responseObj, (LSUtils::DisplaySetId)i);
 
+		responseObj.put("returnValue", true);
+
+		LSUtils::postToSubscriptionPoint(&(mQueryAvailableSubscriptions[i]), responseObj);
+	}
+#else
 	appendAvailableStatus(responseObj);
 
 	responseObj.put("returnValue", true);
 
 	LSUtils::postToSubscriptionPoint(&mQueryAvailableSubscriptions, responseObj);
+#endif
 }
 
 void BluetoothManagerService::adaptersChanged()
@@ -707,13 +800,23 @@ bool BluetoothManagerService::setPairableState(const std::string &adapterAddress
 	return retVal;
 }
 
+#ifdef MULTI_SESSION_SUPPORT
+void BluetoothManagerService::appendCurrentStatus(pbnjson::JValue &object, LSUtils::DisplaySetId displayId)
+#else
 void BluetoothManagerService::appendCurrentStatus(pbnjson::JValue &object)
+#endif
 {
 	pbnjson::JValue adaptersObj = pbnjson::Array();
 
 	for (auto adapterInfoIter : mAdaptersInfo)
 	{
 		auto adapterInfo = adapterInfoIter.second;
+
+#ifdef MULTI_SESSION_SUPPORT
+		BT_INFO("MANAGER_SERVICE", 0, "displayId %d", displayId);
+		if (displayId != LSUtils::DisplaySetId::HOST && adapterInfo->getHciIndex() != displayId)
+			continue;
+#endif
 
 		pbnjson::JValue adapterObj = pbnjson::Object();
 		adapterObj.put("powered", adapterInfo->getPowerState());
@@ -735,13 +838,24 @@ void BluetoothManagerService::appendCurrentStatus(pbnjson::JValue &object)
 	object.put("adapters", adaptersObj);
 }
 
+#ifdef MULTI_SESSION_SUPPORT
+void BluetoothManagerService::appendAvailableStatus(pbnjson::JValue &object, LSUtils::DisplaySetId displayId)
+#else
 void BluetoothManagerService::appendAvailableStatus(pbnjson::JValue &object)
+#endif
 {
 	pbnjson::JValue adaptersObj = pbnjson::Array();
 
 	for (auto adapterInfoIter : mAdaptersInfo)
 	{
 		auto adapterInfo = adapterInfoIter.second;
+
+#ifdef MULTI_SESSION_SUPPORT
+		BT_INFO("MANAGER_SERVICE", 0, "displayId %d", displayId);
+		if (displayId != LSUtils::DisplaySetId::HOST && adapterInfo->getHciIndex() != displayId)
+			continue;
+#endif
+
 		pbnjson::JValue adapterObj = pbnjson::Object();
 
 		adapterObj.put("adapterAddress", adapterInfo->getAddress());
@@ -783,13 +897,22 @@ bool BluetoothManagerService::getStatus(LSMessage &message)
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
+#ifdef MULTI_SESSION_SUPPORT
+	LSUtils::DisplaySetId displaySetIndex = LSUtils::getDisplaySetIdIndex(message, this);
+	if (request.isSubscription())
+	{
+		mGetStatusSubscriptions[displaySetIndex].subscribe(request);
+		subscribed = true;
+	}
+	appendCurrentStatus(responseObj, displaySetIndex);
+#else
 	if (request.isSubscription())
 	{
 		mGetStatusSubscriptions.subscribe(request);
 		subscribed = true;
 	}
-
 	appendCurrentStatus(responseObj);
+#endif
 
 	responseObj.put("returnValue", true);
 	responseObj.put("subscribed", subscribed);
@@ -820,13 +943,22 @@ bool BluetoothManagerService::queryAvailable(LSMessage &message)
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
+#ifdef MULTI_SESSION_SUPPORT
+	LSUtils::DisplaySetId displaySetIndex = LSUtils::getDisplaySetIdIndex(message, this);
+	if (request.isSubscription())
+	{
+		mQueryAvailableSubscriptions[displaySetIndex].subscribe(request);
+		subscribed = true;
+	}
+	appendAvailableStatus(responseObj, displaySetIndex);
+#else
 	if (request.isSubscription())
 	{
 		mQueryAvailableSubscriptions.subscribe(request);
 		subscribed = true;
 	}
-
 	appendAvailableStatus(responseObj);
+#endif
 
 	responseObj.put("returnValue", true);
 	responseObj.put("subscribed", subscribed);
@@ -2955,5 +3087,4 @@ void BluetoothManagerService::leConnectionRequest(const std::string &address, bo
 		}
 	}
 }
-
 // vim: noai:ts=4:sw=4:ss=4:expandtab

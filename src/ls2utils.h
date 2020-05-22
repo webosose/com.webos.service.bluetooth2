@@ -204,6 +204,19 @@ inline void postToClient(LSMessage *message, pbnjson::JValue &object)
 	postToClient(request, object);
 }
 
+#ifdef MULTI_SESSION_SUPPORT
+enum DisplaySetId
+{
+    RSE_L,
+    RSE_R,
+    AVN,
+    HOST
+};
+
+DisplaySetId getDisplaySetIdIndex(LSMessage &message, LS::Handle *handle);
+DisplaySetId getDisplaySetIdIndex(const std::string &deviceSetId);
+#endif
+
 } // namespace LSUtils
 
 #endif

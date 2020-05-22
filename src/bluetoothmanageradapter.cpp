@@ -47,6 +47,9 @@ mIsDefault(false),
 mDiscoveryTimeout(0),
 mDiscoverableTimeout(0),
 mClassOfDevice(0),
+#ifdef MULTI_SESSION_SUPPORT
+mHciIndex(-1),
+#endif
 mAdapter(nullptr),
 mAddress(address),
 mOutgoingPairingWatch(0),
@@ -230,6 +233,9 @@ void BluetoothManagerAdapter::updateFromAdapterProperties(const BluetoothPropert
 	bool changed = false;
 	bool pairableValue = false;
 	bool adaptersChanged = false;
+#ifdef MULTI_SESSION_SUPPORT
+	std::size_t found = std::string::npos;
+#endif
 
 	for(auto prop : properties)
 	{
@@ -238,11 +244,24 @@ void BluetoothManagerAdapter::updateFromAdapterProperties(const BluetoothPropert
 		case BluetoothProperty::Type::NAME:
 			mName = prop.getValue<std::string>();
 			changed = true;
+#ifdef MULTI_SESSION_SUPPORT
+			found = mName.find("hci");
+			if (found != std::string::npos)
+			{
+				std::string index = mName.substr(found + 3, mName.length());
+				std::stringstream stream(index);
+				stream >> mHciIndex;
+			}
+			adaptersChanged = true;
+#endif
 			BT_DEBUG("Bluetooth adapter name has changed to %s", mName.c_str());
 			break;
 		case BluetoothProperty::Type::ALIAS:
 			mName = prop.getValue<std::string>();
 			changed = true;
+#ifdef MULTI_SESSION_SUPPORT
+			adaptersChanged = true;
+#endif
 			BT_DEBUG("Bluetooth adapter alias name has changed to %s", mName.c_str());
 			break;
 		case BluetoothProperty::Type::STACK_NAME:

@@ -501,10 +501,8 @@ bool BluetoothProfileService::connect(LSMessage &message)
 		return true;
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
+	if (!mManager->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	auto adapter = mManager->findAdapterInfo(adapterAddress);
 	if (!adapter)
@@ -705,10 +703,8 @@ bool BluetoothProfileService::disconnect(LSMessage &message)
 		return true;
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
+	if (!mManager->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	auto adapter = mManager->findAdapterInfo(adapterAddress);
 	if (!adapter)
@@ -951,11 +947,8 @@ bool BluetoothProfileService::getStatus(LSMessage &message)
 		return true;
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
+	if (!mManager->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	auto adapter = mManager->findAdapterInfo(adapterAddress);
 	if (!adapter)

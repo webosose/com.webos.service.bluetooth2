@@ -1539,18 +1539,8 @@ bool BluetoothAvrcpProfileService::getRemoteFeatures(LSMessage &message)
 	}
 
 	std::string adapterAddress;
-
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
-	}
 
 	std::string deviceAddress;
 	if (requestObj.hasKey("address"))

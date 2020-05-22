@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019 LG Electronics, Inc.
+# Copyright (c) 2014-2020 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,6 +51,12 @@ webos_add_compiler_flags(ALL ${PBNJSON_CXX_CFLAGS_OTHER})
 pkg_check_modules(PMLOG REQUIRED PmLogLib)
 include_directories(${PMLOG_INCLUDE_DIRS})
 webos_add_compiler_flags(ALL ${PMLOG_CFLAGS_OTHER})
+
+if(WEBOS_TARGET_DISTRO STREQUAL "webos-auto")
+        if(WEBOS_TARGET_MACHINE STREQUAL "sa8155" OR WEBOS_TARGET_MACHINE STREQUAL "qemux86" OR WEBOS_TARGET_MACHINE STREQUAL "qemux86-64")
+                add_definitions(-DMULTI_SESSION_SUPPORT)
+        endif()
+endif()
 
 set(WEBOS_BLUETOOTH_SIL "mock" CACHE STRING "Bluetooth SIL implementation to use")
 set(WEBOS_BLUETOOTH_SIL_BASE_PATH "${WEBOS_INSTALL_LIBDIR}/bluetooth-sils" CACHE STRING "Base path for SIL modules")

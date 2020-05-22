@@ -27,12 +27,20 @@
 #include <luna-service2/lunaservice.hpp>
 #include <bluetooth-sil-api.h>
 #include "bluetoothpairstate.h"
+#ifdef MULTI_SESSION_SUPPORT
+#include "ls2utils.h"
+#endif
 
 class BluetoothProfileService;
 class BluetoothDevice;
 class BluetoothServiceClassInfo;
 class BluetoothGattAncsProfile;
 class BluetoothManagerAdapter;
+
+#ifdef MULTI_SESSION_SUPPORT
+/*3 containers + 1 host*/
+#define MAX_SUBSCRIPTION_SESSIONS 4
+#endif
 
 namespace pbnjson
 {
@@ -155,9 +163,13 @@ private:
 	bool updateFirmware(LSMessage &message);
 #endif
 
+#ifdef MULTI_SESSION_SUPPORT
+	void appendCurrentStatus(pbnjson::JValue &object, LSUtils::DisplaySetId displayId);
+	void appendAvailableStatus(pbnjson::JValue &object, LSUtils::DisplaySetId displayId);
+#else
 	void appendCurrentStatus(pbnjson::JValue &object);
-	void appendCurrentStatusForMultipleAdapters(pbnjson::JValue &object);
 	void appendAvailableStatus(pbnjson::JValue &object);
+#endif
 
 	void notifySubscriberLeDevicesChanged();
 	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId);
@@ -217,9 +229,14 @@ private:
 	std::unordered_map<uint8_t, AdvertiserInfo*> mAdvertisers;
 	std::map<uint8_t, std::string> mAdvIdAdapterMap;
 
+#ifdef MULTI_SESSION_SUPPORT
+	LS::SubscriptionPoint mGetStatusSubscriptions[MAX_SUBSCRIPTION_SESSIONS];
+	LS::SubscriptionPoint mQueryAvailableSubscriptions[MAX_SUBSCRIPTION_SESSIONS];
+#else
 	LS::SubscriptionPoint mGetStatusSubscriptions;
-	LS::SubscriptionPoint mGetAdvStatusSubscriptions;
 	LS::SubscriptionPoint mQueryAvailableSubscriptions;
+#endif
+	LS::SubscriptionPoint mGetAdvStatusSubscriptions;
 	LS::SubscriptionPoint mGetKeepAliveStatusSubscriptions;
 
 	BluetoothGattAncsProfile *mGattAnsc;
