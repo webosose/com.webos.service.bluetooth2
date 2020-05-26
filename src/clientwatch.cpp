@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,23 @@ ClientWatch::ClientWatch(LSHandle *handle, LSMessage *message, ClientWatchStatus
     mCookie(0),
     mCallback(callback),
     mNotificationTimeout(0)
+{
+	if (!mMessage)
+		return;
+
+	LSMessageRef(mMessage);
+	startWatching();
+}
+
+ClientWatch::ClientWatch(LSHandle* handle, LSMessage* message, ClientWatchStatusCallback callback,
+	std::string adapterAddress, std::string deviceAddress) :
+	mHandle(handle),
+	mMessage(message),
+	mCookie(0),
+	mCallback(callback),
+	mNotificationTimeout(0),
+	mAdapterAddress(adapterAddress),
+	mDeviceAddress(deviceAddress)
 {
 	if (!mMessage)
 		return;

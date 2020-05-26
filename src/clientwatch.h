@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,11 +30,15 @@ class ClientWatch
 {
 public:
 	ClientWatch(LSHandle *handle, LSMessage *message, ClientWatchStatusCallback callback);
+	ClientWatch(LSHandle* handle, LSMessage* message, ClientWatchStatusCallback callback,
+		std::string adapterAddress, std::string deviceAddress);
 	ClientWatch(const ClientWatch &other) = delete;
 	~ClientWatch();
 
 	LSMessage *getMessage() const { return mMessage; }
 	void setCallback(ClientWatchStatusCallback callback) { mCallback = callback; }
+	std::string getAdapterAddress() { return mAdapterAddress; }
+	std::string getDeviceAddress() { return mDeviceAddress;  }
 
 private:
 	LSHandle *mHandle;
@@ -42,6 +46,8 @@ private:
 	void *mCookie;
 	ClientWatchStatusCallback mCallback;
 	guint mNotificationTimeout;
+	std::string mAdapterAddress;
+	std::string mDeviceAddress;
 
 	void startWatching();
 	void cleanup();

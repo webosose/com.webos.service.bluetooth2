@@ -1290,28 +1290,21 @@ bool BluetoothAvrcpProfileService::receivePassThroughCommand(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		auto watchesIter = mReceivePassThroughCommandWatchesForMultipleAdapters.find(adapterAddress);
-		if (watchesIter == mReceivePassThroughCommandWatchesForMultipleAdapters.end())
+		const char* senderName = LSMessageGetApplicationID(request.get());
+		if (senderName == NULL)
 		{
-			std::map<std::string, LSUtils::ClientWatch*> receivePassThroughCommandWatches;
-			auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-								std::bind(&BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared, this, adapterAddress, deviceAddress));
-
-			receivePassThroughCommandWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(deviceAddress, watch));
-			mReceivePassThroughCommandWatchesForMultipleAdapters.insert(std::pair<std::string, std::map<std::string, LSUtils::ClientWatch*>>(adapterAddress, receivePassThroughCommandWatches));
-		}
-		else
-		{
-			auto watchIter = (watchesIter->second).find(deviceAddress);
-			if (watchIter == (watchesIter->second).end())
+			senderName = LSMessageGetSenderServiceName(request.get());
+			if (senderName == NULL)
 			{
-				std::map<std::string, LSUtils::ClientWatch*> receivePassThroughCommandWatches;
-				auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-									std::bind(&BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared, this, adapterAddress, deviceAddress));
-
-				(watchesIter->second).insert(std::pair<std::string, LSUtils::ClientWatch*>(deviceAddress, watch));
+				LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+				return true;
 			}
 		}
+
+		auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
+			std::bind(&BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared, this,
+				adapterAddress, deviceAddress, senderName), adapterAddress, deviceAddress);
+		mReceivePassThroughCommandWatchesForMultipleAdapters.push_back(watch);
 
 		subscribed = true;
 	}
@@ -1377,31 +1370,21 @@ bool BluetoothAvrcpProfileService::getSupportedNotificationEvents(LSMessage &mes
 
 	if (request.isSubscription())
 	{
-		auto watchesIter = mGetSupportedNotificationEventsWatchesForMultipleAdapters.find(adapterAddress);
-		if (watchesIter == mGetSupportedNotificationEventsWatchesForMultipleAdapters.end())
+		const char* senderName = LSMessageGetApplicationID(request.get());
+		if (senderName == NULL)
 		{
-			std::map<std::string, LSUtils::ClientWatch*> supportedEventsNotificationCommandWatches;
-			auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-				std::bind(&BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared,
-					this, adapterAddress, deviceAddress));
-
-			supportedEventsNotificationCommandWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(deviceAddress, watch));
-			mGetSupportedNotificationEventsWatchesForMultipleAdapters.insert(
-				std::pair<std::string, std::map<std::string, LSUtils::ClientWatch*>>(adapterAddress,
-					supportedEventsNotificationCommandWatches));
-		}
-		else
-		{
-			auto watchIter = (watchesIter->second).find(deviceAddress);
-			if (watchIter == (watchesIter->second).end())
+			senderName = LSMessageGetSenderServiceName(request.get());
+			if (senderName == NULL)
 			{
-				auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-					std::bind(&BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared, this,
-						adapterAddress, deviceAddress));
-
-				(watchesIter->second).insert(std::pair<std::string, LSUtils::ClientWatch*>(deviceAddress, watch));
+				LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+				return true;
 			}
 		}
+		auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
+			std::bind(&BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared,
+				this, adapterAddress, deviceAddress, senderName), adapterAddress, deviceAddress);
+		mNotificationEventsWatchesForMultipleAdapters.push_back(watch);
+
 		subscribed = true;
 	}
 
@@ -1583,20 +1566,35 @@ std::vector<std::string>* BluetoothAvrcpProfileService::findRemoteFeatures(const
 	return features;
 }
 
-void BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared(const std::string &adapterAddress, const std::string &address)
+void BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared(const std::string adapterAddress,
+	const std::string address, const std::string senderName)
 {
-	auto watchesIter = mReceivePassThroughCommandWatchesForMultipleAdapters.find(adapterAddress);
-	if (watchesIter == mReceivePassThroughCommandWatchesForMultipleAdapters.end())
-		return;
+	removeClientWatch(mReceivePassThroughCommandWatchesForMultipleAdapters, senderName);
+}
 
-	auto watchIter = (watchesIter->second).find(address);
-	if (watchIter == (watchesIter->second).end())
-		return;
+void BluetoothAvrcpProfileService::removeClientWatch(std::list<LSUtils::ClientWatch*>& clientWatch, const std::string& senderName)
+{
+	for (auto watch = clientWatch.begin();
+		watch != clientWatch.end(); ++watch)
+	{
 
-	if (!getImpl<BluetoothAvrcpProfile>(adapterAddress))
-		return;
+		const char* senderNameWatch = LSMessageGetApplicationID((*watch)->getMessage());
+		if (senderNameWatch == NULL)
+		{
+			senderNameWatch = LSMessageGetSenderServiceName((*watch)->getMessage());
+			if (senderNameWatch == NULL)
+			{
+				return;
+			}
+		}
 
-	removeReceivePassThroughCommandWatchForDevice(adapterAddress, address);
+		if (senderName == senderNameWatch)
+		{
+			auto watchToRemove = watch;
+			watch = clientWatch.erase(watch);
+			delete (*watchToRemove);
+		}
+	}
 }
 
 void BluetoothAvrcpProfileService::removeReceivePassThroughCommandWatchForDevice(const std::string &address)
@@ -1621,42 +1619,10 @@ void BluetoothAvrcpProfileService::removeReceivePassThroughCommandWatchForDevice
 	delete watch;
 }
 
-void BluetoothAvrcpProfileService::removeReceivePassThroughCommandWatchForDevice(const std::string &adapterAddress, const std::string &address)
+void BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared(const std::string adapterAddress,
+	const std::string address, const std::string senderName)
 {
-	auto watchesIter = mReceivePassThroughCommandWatchesForMultipleAdapters.find(adapterAddress);
-	if (watchesIter == mReceivePassThroughCommandWatchesForMultipleAdapters.end())
-		return;
-
-	auto watchIter = (watchesIter->second).find(address);
-	if (watchIter == (watchesIter->second).end())
-		return;
-
-	LSUtils::ClientWatch *watch = watchIter->second;
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	responseObj.put("subscribed", false);
-	responseObj.put("returnValue", true);
-
-	responseObj.put("adapterAddress", adapterAddress);
-	responseObj.put("address", address);
-
-	LSUtils::postToClient(watch->getMessage(), responseObj);
-
-	(watchesIter->second).erase(watchIter);
-	delete watch;
-}
-
-void BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared(const std::string &adapterAddress, const std::string &address)
-{
-	auto watchIter = mGetSupportedNotificationEventsWatches.find(address);
-	if (watchIter == mGetSupportedNotificationEventsWatches.end())
-		return;
-
-	if (!getImpl<BluetoothAvrcpProfile>())
-		return;
-
-	removeGetSupportedNotificationEventsWatchForDevice(adapterAddress, address);
+	removeClientWatch(mNotificationEventsWatchesForMultipleAdapters, senderName);
 }
 
 void BluetoothAvrcpProfileService::removeGetSupportedNotificationEventsWatchForDevice(const std::string &address)
@@ -1678,33 +1644,6 @@ void BluetoothAvrcpProfileService::removeGetSupportedNotificationEventsWatchForD
 	LSUtils::postToClient(watch->getMessage(), responseObj);
 
 	mGetSupportedNotificationEventsWatches.erase(watchIter);
-	delete watch;
-}
-
-void BluetoothAvrcpProfileService::removeGetSupportedNotificationEventsWatchForDevice(const std::string& adapterAddress,
-	const std::string& address)
-{
-	auto watchesIter = mGetSupportedNotificationEventsWatchesForMultipleAdapters.find(adapterAddress);
-	if (watchesIter == mGetSupportedNotificationEventsWatchesForMultipleAdapters.end())
-		return;
-
-	auto watchIter = (watchesIter->second).find(address);
-	if (watchIter == (watchesIter->second).end())
-		return;
-
-	LSUtils::ClientWatch* watch = watchIter->second;
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	responseObj.put("subscribed", false);
-	responseObj.put("returnValue", false);
-
-	responseObj.put("adapterAddress", adapterAddress);
-	responseObj.put("address", address);
-
-	LSUtils::postToClient(watch->getMessage(), responseObj);
-
-	(watchesIter->second).erase(watchIter);
 	delete watch;
 }
 
@@ -1951,16 +1890,6 @@ void BluetoothAvrcpProfileService::passThroughCommandReceived(BluetoothAvrcpPass
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
-	auto watchesIter = mReceivePassThroughCommandWatchesForMultipleAdapters.find(adapterAddress);
-	if (watchesIter == mReceivePassThroughCommandWatchesForMultipleAdapters.end())
-		return;
-
-	auto watchIter = (watchesIter->second).find(address);
-	if (watchIter == (watchesIter->second).end())
-		return;
-
-	LSUtils::ClientWatch *watch = watchIter->second;
-
 	pbnjson::JValue object = pbnjson::Object();
 
 	object.put("returnValue", true);
@@ -1970,7 +1899,14 @@ void BluetoothAvrcpProfileService::passThroughCommandReceived(BluetoothAvrcpPass
 	object.put("keyCode", passThroughKeyCodeEnumToString(keyCode));
 	object.put("keyStatus", passThroughKeyStatusEnumToString(keyStatus));
 
-	LSUtils::postToClient(watch->getMessage(), object);
+	for (auto watch : mReceivePassThroughCommandWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
 }
 
 /*
@@ -2025,16 +1961,14 @@ void BluetoothAvrcpProfileService::supportedNotificationEventsReceived(const Blu
 	}
 	object.put("supportedNotificationEvents", supportedNotificationEventsObj);
 
-	auto watchesIter = mGetSupportedNotificationEventsWatchesForMultipleAdapters.find(adapterAddress);
-	if (watchesIter == mGetSupportedNotificationEventsWatchesForMultipleAdapters.end())
-		return;
-	auto watchIter = (watchesIter->second).find(address);
-	if (watchIter == (watchesIter->second).end())
-		return;
-
-	LSUtils::ClientWatch* watch = watchIter->second;
-
-	LSUtils::postToClient(watch->getMessage(), object);
+	for (auto watch : mNotificationEventsWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
 }
 
 void BluetoothAvrcpProfileService::supportedNotificationEventsReceived(const BluetoothAvrcpSupportedNotificationEventList &events, const std::string &address)

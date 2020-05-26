@@ -119,12 +119,13 @@ private:
 	void notifyConfirmationRequest(LS::Message &request, const std::string &requestId, const std::string &adapterAddress, bool success);
 	void parseMediaMetaData(const pbnjson::JValue &dataObj, BluetoothMediaMetaData *data);
 	void parseMediaPlayStatus(const pbnjson::JValue &dataObj, BluetoothMediaPlayStatus *status);
-	void handleReceivePassThroughCommandClientDisappeared(const std::string &adapterAddress, const std::string &address);
+	void handleReceivePassThroughCommandClientDisappeared(const std::string adapterAddress,
+		const std::string address, const std::string senderName);
+	void removeClientWatch(std::list<LSUtils::ClientWatch*>& clientWatch, const std::string& senderName);
 	void removeReceivePassThroughCommandWatchForDevice(const std::string &address);
-	void removeReceivePassThroughCommandWatchForDevice(const std::string &adapterAddress, const std::string &address);
-	void handleGetSupportedNotificationEventsClientDisappeared(const std::string &adapterAddress, const std::string &address);
+	void handleGetSupportedNotificationEventsClientDisappeared(const std::string adapterAddress,
+		const std::string address, const std::string senderName);
 	void removeGetSupportedNotificationEventsWatchForDevice(const std::string &address);
-	void removeGetSupportedNotificationEventsWatchForDevice(const std::string& adapterAddress, const std::string& address);
 
 	std::string mediaPlayStatusToString(BluetoothMediaPlayStatus::MediaPlayStatus status);
 	BluetoothPlayerApplicationSettingsEqualizer equalizerStringToEnum(const std::string &equalizer);
@@ -176,11 +177,11 @@ private:
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaMetaDataSubscriptions;
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaPlayStatusSubscriptions;
 
-	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mGetSupportedNotificationEventsWatchesForMultipleAdapters;
+	std::list<LSUtils::ClientWatch*> mNotificationEventsWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaMetaDataSubscriptionsForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaPlayStatusSubscriptionsForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters;
-	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mReceivePassThroughCommandWatchesForMultipleAdapters;
+	std::list<LSUtils::ClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
