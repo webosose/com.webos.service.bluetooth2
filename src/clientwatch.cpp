@@ -34,23 +34,6 @@ ClientWatch::ClientWatch(LSHandle *handle, LSMessage *message, ClientWatchStatus
 	startWatching();
 }
 
-ClientWatch::ClientWatch(LSHandle* handle, LSMessage* message, ClientWatchStatusCallback callback,
-	std::string adapterAddress, std::string deviceAddress) :
-	mHandle(handle),
-	mMessage(message),
-	mCookie(0),
-	mCallback(callback),
-	mNotificationTimeout(0),
-	mAdapterAddress(adapterAddress),
-	mDeviceAddress(deviceAddress)
-{
-	if (!mMessage)
-		return;
-
-	LSMessageRef(mMessage);
-	startWatching();
-}
-
 ClientWatch::~ClientWatch()
 {
 	// Don't send any pending notifications as that will fail

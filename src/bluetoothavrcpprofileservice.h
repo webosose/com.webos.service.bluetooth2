@@ -45,6 +45,8 @@ namespace LSUtils
 	class ClientWatch;
 }
 
+class BluetoothClientWatch;
+
 class BluetoothAvrcpProfileService : public BluetoothProfileService, BluetoothAvrcpStatusObserver
 {
 public:
@@ -65,6 +67,8 @@ public:
 	bool setAbsoluteVolume(LSMessage &message);
 	bool getRemoteVolume(LSMessage &message);
 	bool receivePassThroughCommand(LSMessage &message);
+	bool addClientWatch(LS::Message& request, std::list<BluetoothClientWatch*>* clientWatch,
+		std::string adapterAddress, std::string deviceAddress);
 	bool getSupportedNotificationEvents(LSMessage &message);
 	bool getRemoteFeatures(LSMessage &message);
 
@@ -119,12 +123,9 @@ private:
 	void notifyConfirmationRequest(LS::Message &request, const std::string &requestId, const std::string &adapterAddress, bool success);
 	void parseMediaMetaData(const pbnjson::JValue &dataObj, BluetoothMediaMetaData *data);
 	void parseMediaPlayStatus(const pbnjson::JValue &dataObj, BluetoothMediaPlayStatus *status);
-	void handleReceivePassThroughCommandClientDisappeared(const std::string adapterAddress,
-		const std::string address, const std::string senderName);
-	void removeClientWatch(std::list<LSUtils::ClientWatch*>& clientWatch, const std::string& senderName);
+	void removeClientWatch(std::list<BluetoothClientWatch*> *clientWatch, const std::string& senderName);
 	void removeReceivePassThroughCommandWatchForDevice(const std::string &address);
-	void handleGetSupportedNotificationEventsClientDisappeared(const std::string adapterAddress,
-		const std::string address, const std::string senderName);
+	void handleClientDisappeared(std::list<BluetoothClientWatch*>* clientWatch, const std::string senderName);
 	void removeGetSupportedNotificationEventsWatchForDevice(const std::string &address);
 
 	std::string mediaPlayStatusToString(BluetoothMediaPlayStatus::MediaPlayStatus status);
@@ -177,11 +178,11 @@ private:
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaMetaDataSubscriptions;
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaPlayStatusSubscriptions;
 
-	std::list<LSUtils::ClientWatch*> mNotificationEventsWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mNotificationEventsWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaMetaDataSubscriptionsForMultipleAdapters;
-	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaPlayStatusSubscriptionsForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mMediaPlayStatusWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters;
-	std::list<LSUtils::ClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;

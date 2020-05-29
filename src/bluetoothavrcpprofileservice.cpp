@@ -22,6 +22,7 @@
 #include "clientwatch.h"
 #include "logging.h"
 #include "utils.h"
+#include "bluetoothclientwatch.h"
 #include <cmath>
 
 using namespace std::placeholders;
@@ -115,15 +116,6 @@ BluetoothAvrcpProfileService::~BluetoothAvrcpProfileService()
 		itMediaData != mGetMediaMetaDataSubscriptionsForMultipleAdapters.end(); ++itMediaData)
 	{
 		for (auto itSub = itMediaData->second.begin(); itSub != itMediaData->second.end(); ++itSub)
-		{
-			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
-			delete subscriptionPoint;
-		}
-	}
-	for (auto itMediaStatus = mGetMediaPlayStatusSubscriptionsForMultipleAdapters.begin();
-		itMediaStatus != mGetMediaPlayStatusSubscriptionsForMultipleAdapters.end(); ++itMediaStatus)
-	{
-		for (auto itSub = itMediaStatus->second.begin(); itSub != itMediaStatus->second.end(); ++itSub)
 		{
 			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
 			delete subscriptionPoint;
@@ -1219,12 +1211,14 @@ bool BluetoothAvrcpProfileService::getMediaPlayStatus(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetMediaPlayStatusSubscriptionsForMultipleAdapters,
+		bool retVal = addClientWatch(request, &mMediaPlayStatusWatchesForMultipleAdapters,
 			adapterAddress, deviceAddress);
-
-		subscriptionPoint->subscribe(request);
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
 		subscribed = true;
-
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -1239,7 +1233,7 @@ bool BluetoothAvrcpProfileService::getMediaPlayStatus(LSMessage &message)
 	return true;
 }
 
-bool BluetoothAvrcpProfileService::receivePassThroughCommand(LSMessage &message)
+bool BluetoothAvrcpProfileService::receivePassThroughCommand(LSMessage& message)
 {
 	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
 
@@ -1248,7 +1242,7 @@ bool BluetoothAvrcpProfileService::receivePassThroughCommand(LSMessage &message)
 	int parseError = 0;
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string), PROP(address, string),
-                                                PROP_WITH_VAL_1(subscribe, boolean, true))REQUIRED_1(subscribe));
+		PROP_WITH_VAL_1(subscribe, boolean, true))REQUIRED_1(subscribe));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -1290,22 +1284,13 @@ bool BluetoothAvrcpProfileService::receivePassThroughCommand(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		const char* senderName = LSMessageGetApplicationID(request.get());
-		if (senderName == NULL)
+		bool retVal = addClientWatch(request, &mReceivePassThroughCommandWatchesForMultipleAdapters,
+			adapterAddress, deviceAddress);
+		if (!retVal)
 		{
-			senderName = LSMessageGetSenderServiceName(request.get());
-			if (senderName == NULL)
-			{
-				LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
-				return true;
-			}
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
 		}
-
-		auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-			std::bind(&BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared, this,
-				adapterAddress, deviceAddress, senderName), adapterAddress, deviceAddress);
-		mReceivePassThroughCommandWatchesForMultipleAdapters.push_back(watch);
-
 		subscribed = true;
 	}
 
@@ -1318,6 +1303,25 @@ bool BluetoothAvrcpProfileService::receivePassThroughCommand(LSMessage &message)
 
 	LSUtils::postToClient(request, responseObj);
 
+	return true;
+}
+
+bool BluetoothAvrcpProfileService::addClientWatch(LS::Message& request, std::list<BluetoothClientWatch*>* clientWatch,
+	std::string adapterAddress, std::string deviceAddress)
+{
+	const char* senderName = LSMessageGetApplicationID(request.get());
+	if (senderName == NULL)
+	{
+		senderName = LSMessageGetSenderServiceName(request.get());
+		if (senderName == NULL)
+		{
+			return false;
+		}
+	}
+	auto watch = new BluetoothClientWatch(getManager()->get(), request.get(),
+		std::bind(&BluetoothAvrcpProfileService::handleClientDisappeared,
+			this, clientWatch, senderName), adapterAddress, deviceAddress);
+	clientWatch->push_back(watch);
 	return true;
 }
 
@@ -1370,21 +1374,13 @@ bool BluetoothAvrcpProfileService::getSupportedNotificationEvents(LSMessage &mes
 
 	if (request.isSubscription())
 	{
-		const char* senderName = LSMessageGetApplicationID(request.get());
-		if (senderName == NULL)
+		bool retVal = addClientWatch(request, &mNotificationEventsWatchesForMultipleAdapters,
+			adapterAddress, deviceAddress);
+		if (!retVal)
 		{
-			senderName = LSMessageGetSenderServiceName(request.get());
-			if (senderName == NULL)
-			{
-				LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
-				return true;
-			}
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
 		}
-		auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-			std::bind(&BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared,
-				this, adapterAddress, deviceAddress, senderName), adapterAddress, deviceAddress);
-		mNotificationEventsWatchesForMultipleAdapters.push_back(watch);
-
 		subscribed = true;
 	}
 
@@ -1566,16 +1562,10 @@ std::vector<std::string>* BluetoothAvrcpProfileService::findRemoteFeatures(const
 	return features;
 }
 
-void BluetoothAvrcpProfileService::handleReceivePassThroughCommandClientDisappeared(const std::string adapterAddress,
-	const std::string address, const std::string senderName)
+void BluetoothAvrcpProfileService::removeClientWatch(std::list<BluetoothClientWatch*> *clientWatch, const std::string& senderName)
 {
-	removeClientWatch(mReceivePassThroughCommandWatchesForMultipleAdapters, senderName);
-}
-
-void BluetoothAvrcpProfileService::removeClientWatch(std::list<LSUtils::ClientWatch*>& clientWatch, const std::string& senderName)
-{
-	for (auto watch = clientWatch.begin();
-		watch != clientWatch.end(); ++watch)
+	for (auto watch = clientWatch->begin();
+		watch != clientWatch->end(); ++watch)
 	{
 
 		const char* senderNameWatch = LSMessageGetApplicationID((*watch)->getMessage());
@@ -1591,7 +1581,7 @@ void BluetoothAvrcpProfileService::removeClientWatch(std::list<LSUtils::ClientWa
 		if (senderName == senderNameWatch)
 		{
 			auto watchToRemove = watch;
-			watch = clientWatch.erase(watch);
+			watch = clientWatch->erase(watch);
 			delete (*watchToRemove);
 		}
 	}
@@ -1619,10 +1609,9 @@ void BluetoothAvrcpProfileService::removeReceivePassThroughCommandWatchForDevice
 	delete watch;
 }
 
-void BluetoothAvrcpProfileService::handleGetSupportedNotificationEventsClientDisappeared(const std::string adapterAddress,
-	const std::string address, const std::string senderName)
+void BluetoothAvrcpProfileService::handleClientDisappeared(std::list<BluetoothClientWatch*>* clientWatch, const std::string senderName)
 {
-	removeClientWatch(mNotificationEventsWatchesForMultipleAdapters, senderName);
+	removeClientWatch(clientWatch, senderName);
 }
 
 void BluetoothAvrcpProfileService::removeGetSupportedNotificationEventsWatchForDevice(const std::string &address)
@@ -1800,16 +1789,6 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 	const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
-
-	auto subscriptionIter = mGetMediaPlayStatusSubscriptionsForMultipleAdapters.find(adapterAddress);
-	if (subscriptionIter == mGetMediaPlayStatusSubscriptionsForMultipleAdapters.end())
-		return;
-
-
-	auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
-	if (subscriptionDeviceIter == (subscriptionIter->second).end())
-		return;
-
 	pbnjson::JValue object = pbnjson::Object();
 
 	object.put("returnValue", true);
@@ -1824,8 +1803,14 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 
 	object.put("playbackStatus", playStatusObj);
 
-	LS::SubscriptionPoint* subscriptionPoint = subscriptionDeviceIter->second;
-	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
+	for (auto watch : mMediaPlayStatusWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
 }
 
 void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &adapterAddress ,const std::string &address)

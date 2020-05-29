@@ -30,15 +30,11 @@ class ClientWatch
 {
 public:
 	ClientWatch(LSHandle *handle, LSMessage *message, ClientWatchStatusCallback callback);
-	ClientWatch(LSHandle* handle, LSMessage* message, ClientWatchStatusCallback callback,
-		std::string adapterAddress, std::string deviceAddress);
 	ClientWatch(const ClientWatch &other) = delete;
 	~ClientWatch();
 
 	LSMessage *getMessage() const { return mMessage; }
 	void setCallback(ClientWatchStatusCallback callback) { mCallback = callback; }
-	std::string getAdapterAddress() { return mAdapterAddress; }
-	std::string getDeviceAddress() { return mDeviceAddress;  }
 
 private:
 	LSHandle *mHandle;
@@ -46,8 +42,6 @@ private:
 	void *mCookie;
 	ClientWatchStatusCallback mCallback;
 	guint mNotificationTimeout;
-	std::string mAdapterAddress;
-	std::string mDeviceAddress;
 
 	void startWatching();
 	void cleanup();
