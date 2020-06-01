@@ -55,6 +55,7 @@ mBluetoothManagerService(mngr)
 {
 	BT_INFO("MANAGER_SERVICE", 0, "BluetoothManagerAdapter address[%s] created", mAddress.c_str());
 	mGetDevicesSubscriptions.setServiceHandle(mBluetoothManagerService);
+	mGetConnectedDevicesSubscriptions.setServiceHandle(mBluetoothManagerService);
 	mEnabledServiceClasses = split(std::string(WEBOS_BLUETOOTH_ENABLED_SERVICE_CLASSES), ' ');
 }
 
@@ -107,6 +108,17 @@ void BluetoothManagerAdapter::notifySubscribersFilteredDevicesChanged()
 		responseObj.put("returnValue", true);
 		LSUtils::postToClient(watchIter.second->getMessage(), responseObj);
 	}
+}
+
+void BluetoothManagerAdapter::notifySubscribersConnectedDevicesChanged()
+{
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	appendConnectedDevices(responseObj);
+
+	responseObj.put("returnValue", true);
+
+	LSUtils::postToSubscriptionPoint(&mGetConnectedDevicesSubscriptions, responseObj);
 }
 
 void BluetoothManagerAdapter::notifySubscribersDevicesChanged()
@@ -384,6 +396,7 @@ void BluetoothManagerAdapter::deviceFound(BluetoothPropertiesList properties)
 
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
+	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::deviceFound(const std::string &address, BluetoothPropertiesList properties)
@@ -400,6 +413,7 @@ void BluetoothManagerAdapter::deviceFound(const std::string &address, BluetoothP
 
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
+	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::devicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties)
@@ -411,6 +425,7 @@ void BluetoothManagerAdapter::devicePropertiesChanged(const std::string &address
 	{
 		notifySubscribersFilteredDevicesChanged();
 		notifySubscribersDevicesChanged();
+		notifySubscribersConnectedDevicesChanged();
 	}
 }
 
@@ -427,6 +442,7 @@ void BluetoothManagerAdapter::deviceRemoved(const std::string &address)
 	delete device;
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
+	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::leDeviceFound(const std::string &address, BluetoothPropertiesList properties)
@@ -833,6 +849,55 @@ void BluetoothManagerAdapter::appendLeDevicesByScanId(pbnjson::JValue &object, u
 	object.put("devices", devicesObj);
 }
 
+void BluetoothManagerAdapter::appendConnectedDevices(pbnjson::JValue &object)
+{
+	bool anyProfileConnected = false;
+
+	pbnjson::JValue devicesObj = pbnjson::Array();
+
+	for (auto deviceIter : mDevices)
+	{
+		anyProfileConnected = false;
+		auto device = deviceIter.second;
+		pbnjson::JValue deviceObj = pbnjson::Object();
+
+		BT_DEBUG("appendConnectedDevices address: %s", device->getAddress().c_str());
+
+		for (auto profile : mBluetoothManagerService->getProfiles())
+		{
+			if(profile->isDeviceConnected(getAddress(), device->getAddress()))
+			{
+				BT_DEBUG("MANAGER_SERVICE", 0, "There is connected devices with [%s] profile : [%s : %d]", profile->getName(), __FUNCTION__, __LINE__);
+				anyProfileConnected = true;
+				break;
+			}
+		}
+		if (anyProfileConnected)
+		{
+			BT_DEBUG("MANAGER_SERVICE", 0, "Device is connected via at least one profile : [%s : %d]", __FUNCTION__, __LINE__);
+			deviceObj.put("name", device->getName());
+			deviceObj.put("address", device->getAddress());
+			deviceObj.put("typeOfDevice", device->getTypeAsString());
+			deviceObj.put("classOfDevice", (int32_t) device->getClassOfDevice());
+			deviceObj.put("paired", device->getPaired());
+			deviceObj.put("pairing", device->getPairing());
+			deviceObj.put("trusted", device->getTrusted());
+			deviceObj.put("blocked", device->getBlocked());
+			deviceObj.put("rssi", device->getRssi());
+
+			deviceObj.put("adapterAddress", getAddress());
+
+			appendManufacturerData(deviceObj, device->getManufacturerData());
+			appendSupportedServiceClasses(deviceObj, device->getSupportedServiceClasses());
+			appendConnectedProfiles(deviceObj, device->getAddress());
+			appendScanRecord(deviceObj, device->getScanRecord());
+			devicesObj.append(deviceObj);
+		}
+	}
+
+	object.put("devices", devicesObj);
+}
+
 void BluetoothManagerAdapter::appendDevices(pbnjson::JValue &object)
 {
 	pbnjson::JValue devicesObj = pbnjson::Array();
@@ -1116,6 +1181,29 @@ bool BluetoothManagerAdapter::getFilteringDeviceStatus(LS::Message &request, pbn
 	}
 
 	appendFilteringDevices(senderName, responseObj);
+
+	responseObj.put("returnValue", true);
+	responseObj.put("subscribed", subscribed);
+	responseObj.put("adapterAddress", mAddress);
+
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
+
+bool BluetoothManagerAdapter::getConnectedDevices(LS::Message &request, pbnjson::JValue &requestObj)
+{
+	bool subscribed = false;
+
+	if (request.isSubscription())
+	{
+		mGetConnectedDevicesSubscriptions.subscribe(request);
+		subscribed = true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	appendConnectedDevices(responseObj);
 
 	responseObj.put("returnValue", true);
 	responseObj.put("subscribed", subscribed);
@@ -1881,6 +1969,7 @@ void BluetoothManagerAdapter::startPairing(BluetoothDevice *device)
 	mBluetoothManagerService->notifySubscribersAboutStateChange();
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
+	notifySubscribersConnectedDevicesChanged();
 
 	// Device discovery needs to be stopped for pairing
 	getAdapter()->cancelDiscovery(std::bind(&BluetoothManagerAdapter::cancelDiscoveryCallback, this, device, _1));
@@ -1893,6 +1982,7 @@ void BluetoothManagerAdapter::stopPairing()
 	mBluetoothManagerService->notifySubscribersAboutStateChange();
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
+	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::cancelIncomingPairingSubscription()

@@ -17,6 +17,8 @@
 
 #include "bluetoothavrcpprofileservice.h"
 #include "bluetoothmanagerservice.h"
+#include "bluetoothmanageradapter.h"
+#include "bluetoothdevice.h"
 #include "bluetootherrors.h"
 #include "ls2utils.h"
 #include "clientwatch.h"
@@ -1092,37 +1094,87 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 		}
 	}
 
-	bool subscribed =  false;
+	bool subscribed = false;
 
-	if (request.isSubscription())
+	if (requestObj.hasKey("address"))
 	{
-		bool retVal = addClientWatch(request, &mGetRemoteVolumeWatchesForMultipleAdapters,
-			adapterAddress, deviceAddress);
-		if (!retVal)
+		BT_DEBUG("AVRCP: Address argument is given for getRemoteVolume : [%s : %d]", __FUNCTION__, __LINE__);
+		if (request.isSubscription())
 		{
-			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
-			return true;
+			bool retVal = addClientWatch(request, &mGetRemoteVolumeWatchesForMultipleAdapters,
+				adapterAddress, deviceAddress);
+			if (!retVal)
+			{
+				LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+				return true;
+			}
+
+			subscribed = true;
 		}
 
-		subscribed = true;
+		pbnjson::JValue responseObj = pbnjson::Object();
 
+		responseObj.put("subscribed", subscribed);
+		responseObj.put("returnValue", true);
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", deviceAddress);
+
+
+		if (isDeviceConnected(adapterAddress, deviceAddress))
+		{
+			if (mRemoteVolumes.find(deviceAddress) != mRemoteVolumes.end())
+				responseObj.put("volume", mRemoteVolumes[deviceAddress]);
+		}
+
+		LSUtils::postToClient(request, responseObj);
 	}
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	responseObj.put("subscribed", subscribed);
-	responseObj.put("returnValue", true);
-	responseObj.put("adapterAddress", adapterAddress);
-	responseObj.put("address", deviceAddress);
-
-
-	if (isDeviceConnected(adapterAddress, deviceAddress))
+	else
 	{
-		if (mRemoteVolumes.find(deviceAddress) != mRemoteVolumes.end())
-			responseObj.put("volume", mRemoteVolumes[deviceAddress]);
-	}
+		BT_DEBUG("AVRCP: Address argument is not given for getRemoteVolume : [%s : %d]", __FUNCTION__, __LINE__);
 
-	LSUtils::postToClient(request, responseObj);
+		bool isAnyDeviceConnected = false;
+
+		if (request.isSubscription())
+		{
+			bool retVal = addClientWatch(request, &mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters,
+			adapterAddress, deviceAddress);
+			if (!retVal)
+			{
+				LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+				return true;
+			}
+
+			subscribed = true;
+		}
+
+		pbnjson::JValue connectedDeviceResponseObj = pbnjson::Object();
+
+		auto adapterInfo = getManager()->findAdapterInfo(adapterAddress);
+		for (auto deviceIter : adapterInfo->getDevices())
+		{
+			auto device = deviceIter.second;
+
+			if (isDeviceConnected(adapterAddress, device->getAddress()))
+			{
+				BT_DEBUG("AVRCP: Found devices with AVRCP connected : [%s : %d] [%s]", __FUNCTION__, __LINE__, device->getName());
+				connectedDeviceResponseObj.put("returnValue", true);
+				connectedDeviceResponseObj.put("subscribed", subscribed);
+				connectedDeviceResponseObj.put("adapterAddress", adapterAddress);
+				connectedDeviceResponseObj.put("address", device->getAddress());
+				connectedDeviceResponseObj.put("volume", mRemoteVolumes[device->getAddress()]);
+				LSUtils::postToClient(request, connectedDeviceResponseObj);
+				isAnyDeviceConnected = true;
+			}
+		}
+
+		// No device is connected.
+		if (!isAnyDeviceConnected)
+		{
+			BT_DEBUG("AVRCP: There is no AVRCP connected device : [%s : %d]", __FUNCTION__, __LINE__);
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_NO_CONNECTED_DEVICES);
+			return true;
+		}
+	}
 
 	return true;
 }
@@ -1791,6 +1843,14 @@ void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &
 	{
 		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
 			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+
+	for (auto watch : mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
 		{
 			LSUtils::postToClient(watch->getMessage(), object);
 		}

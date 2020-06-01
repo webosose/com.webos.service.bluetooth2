@@ -123,6 +123,7 @@
         "com.webos.service.bluetooth2/adapter/internal/setWoBle",
         "com.webos.service.bluetooth2/adapter/internal/setWoBleTriggerDevices",
         "com.webos.service.bluetooth2/adapter/internal/startDiscovery",
+        "com.webos.service.bluetooth2/device/getConnectedDevices",
         "com.webos.service.bluetooth2/device/getStatus",
         "com.webos.service.bluetooth2/device/setState",
         "com.webos.service.bluetooth2/device/internal/getLinkKey",
@@ -157,6 +158,7 @@
         "com.webos.service.bluetooth2/pbap/getStatus",
         "com.webos.service.bluetooth2/spp/getStatus",
         "com.webos.service.bluetooth2/adapter/getStatus",
+        "com.webos.service.bluetooth2/device/getConnectedDevices",
         "com.webos.service.bluetooth2/device/getStatus",
         "com.webos.service.bluetooth2/ftp/getStatus",
         "com.webos.service.bluetooth2/opp/getStatus"
@@ -286,6 +288,7 @@
         "com.webos.service.bluetooth2/adapter/internal/setWoBle",
         "com.webos.service.bluetooth2/adapter/internal/setWoBleTriggerDevices",
         "com.webos.service.bluetooth2/adapter/internal/startDiscovery",
+        "com.webos.service.bluetooth2/device/getConnectedDevices",
         "com.webos.service.bluetooth2/device/getStatus",
         "com.webos.service.bluetooth2/device/setState",
         "com.webos.service.bluetooth2/device/internal/getLinkKey",

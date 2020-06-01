@@ -182,6 +182,7 @@ private:
 	std::list<BluetoothClientWatch*> mPlayerApplicationSettingsWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetRemoteVolumeWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters;
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
 	/* Features supported by remote AVRCP controller device */
