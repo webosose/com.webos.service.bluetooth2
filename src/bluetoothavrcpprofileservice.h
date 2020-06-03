@@ -20,6 +20,7 @@
 
 #include <string>
 #include <map>
+#include <list>
 
 #include <bluetooth-sil-api.h>
 #include <luna-service2/lunaservice.hpp>
@@ -144,9 +145,6 @@ private:
 	std::vector<std::string> *findRemoteFeatures(const std::string& adapterAddress, const std::string& address, std::string role);
 	void clearRemoteFeatures(const std::string &adapterAddress, const std::string &address);
 
-	LS::SubscriptionPoint* addSubscription(std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>>& subscriptions,
-		const std::string& adapterAddress, const std::string& deviceAddress);
-
 private:
 	std::string mEqualizer;
 	std::string mRepeat;
@@ -179,11 +177,11 @@ private:
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaPlayStatusSubscriptions;
 
 	std::list<BluetoothClientWatch*> mNotificationEventsWatchesForMultipleAdapters;
-	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetMediaMetaDataSubscriptionsForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetMediaMetaDataWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mMediaPlayStatusWatchesForMultipleAdapters;
-	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mPlayerApplicationSettingsWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
-	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetRemoteVolumeSubscriptionsForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetRemoteVolumeWatchesForMultipleAdapters;
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
 	/* Features supported by remote AVRCP controller device */

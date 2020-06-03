@@ -111,25 +111,6 @@ BluetoothAvrcpProfileService::~BluetoothAvrcpProfileService()
 		delete clientWatch;
 	}
 	mGetSupportedNotificationEventsWatches.clear();
-
-	for (auto itMediaData = mGetMediaMetaDataSubscriptionsForMultipleAdapters.begin();
-		itMediaData != mGetMediaMetaDataSubscriptionsForMultipleAdapters.end(); ++itMediaData)
-	{
-		for (auto itSub = itMediaData->second.begin(); itSub != itMediaData->second.end(); ++itSub)
-		{
-			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
-			delete subscriptionPoint;
-		}
-	}
-	for (auto itPlayerSettings = mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters.begin();
-		itPlayerSettings != mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters.end(); ++itPlayerSettings)
-	{
-		for (auto itSub = itPlayerSettings->second.begin(); itSub != itPlayerSettings->second.end(); ++itSub)
-		{
-			LS::SubscriptionPoint* subscriptionPoint = itSub->second;
-			delete subscriptionPoint;
-		}
-	}
 }
 
 void BluetoothAvrcpProfileService::initialize()
@@ -621,38 +602,6 @@ bool BluetoothAvrcpProfileService::sendPassThroughCommand(LSMessage &message)
 	return true;
 }
 
-LS::SubscriptionPoint* BluetoothAvrcpProfileService::addSubscription(std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>>& subscriptions,
-	const std::string& adapterAddress, const std::string& deviceAddress)
-{
-	BT_INFO("AVRCP", 0, "addSubscription");
-	LS::SubscriptionPoint* subscriptionPoint = 0;
-
-	auto subscriptionIter = subscriptions.find(adapterAddress);
-	if (subscriptionIter == subscriptions.end())
-	{
-		std::map<std::string, LS::SubscriptionPoint*> apiSubscriptionPoints;
-		subscriptionPoint = new LS::SubscriptionPoint;
-		subscriptionPoint->setServiceHandle(getManager());
-		apiSubscriptionPoints.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
-		subscriptions.insert(std::pair<std::string, std::map<std::string, LS::SubscriptionPoint*>>(adapterAddress, apiSubscriptionPoints));
-	}
-	else
-	{
-		auto subscriptionDeviceIter = (subscriptionIter->second).find(deviceAddress);
-		if (subscriptionDeviceIter == (subscriptionIter->second).end())
-		{
-			subscriptionPoint = new LS::SubscriptionPoint;
-			subscriptionPoint->setServiceHandle(getManager());
-			(subscriptionIter->second).insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
-		}
-		else
-		{
-			subscriptionPoint = subscriptionDeviceIter->second;
-		}
-	}
-	return subscriptionPoint;
-}
-
 bool BluetoothAvrcpProfileService::getMediaMetaData(LSMessage &message)
 {
 	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
@@ -694,9 +643,14 @@ bool BluetoothAvrcpProfileService::getMediaMetaData(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetMediaMetaDataSubscriptionsForMultipleAdapters, adapterAddress, deviceAddress);
+		bool retVal = addClientWatch(request, &mGetMediaMetaDataWatchesForMultipleAdapters,
+			adapterAddress, deviceAddress);
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
 
-		subscriptionPoint->subscribe(request);
 		subscribed = true;
 	}
 
@@ -778,10 +732,13 @@ bool BluetoothAvrcpProfileService::getPlayerApplicationSettings(LSMessage &messa
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters,
+		bool retVal = addClientWatch(request, &mPlayerApplicationSettingsWatchesForMultipleAdapters,
 			adapterAddress, deviceAddress);
-
-		subscriptionPoint->subscribe(request);
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
 		subscribed = true;
 	}
 
@@ -828,24 +785,20 @@ void BluetoothAvrcpProfileService::playerApplicationSettingsReceived(const Bluet
 	if (changed)
 	{
 		pbnjson::JValue responseObj = pbnjson::Object();
-
-		auto subscriptionIter = mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters.find(adapterAddress);
-		if (subscriptionIter == mGetPlayerApplicationSettingsSubscriptionsForMultipleAdapters.end())
-			return;
-
-
-		auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
-		if (subscriptionDeviceIter == (subscriptionIter->second).end())
-			return;
-
 		appendCurrentApplicationSettings(responseObj);
 		responseObj.put("subscribed", true);
 		responseObj.put("returnValue", true);
 		responseObj.put("adapterAddress", adapterAddress);
 		responseObj.put("address", address);
 
-		LS::SubscriptionPoint* subscriptionPoint = subscriptionDeviceIter->second;
-		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+		for (auto watch : mPlayerApplicationSettingsWatchesForMultipleAdapters)
+		{
+			if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+				convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+			{
+				LSUtils::postToClient(watch->getMessage(), responseObj);
+			}
+		}
 	}
 }
 
@@ -1143,10 +1096,14 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 
 	if (request.isSubscription())
 	{
-		LS::SubscriptionPoint* subscriptionPoint = addSubscription(mGetRemoteVolumeSubscriptionsForMultipleAdapters,
+		bool retVal = addClientWatch(request, &mGetRemoteVolumeWatchesForMultipleAdapters,
 			adapterAddress, deviceAddress);
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
 
-		subscriptionPoint->subscribe(request);
 		subscribed = true;
 
 	}
@@ -1753,15 +1710,6 @@ void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaDat
 	mMediaMetaData->setTrackCount(metaData.getTrackCount());
 	mMediaMetaData->setDuration(metaData.getDuration());
 
-	auto subscriptionIter = mGetMediaMetaDataSubscriptionsForMultipleAdapters.find(adapterAddress);
-	if (subscriptionIter == mGetMediaMetaDataSubscriptionsForMultipleAdapters.end())
-		return;
-
-
-	auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
-	if (subscriptionDeviceIter == (subscriptionIter->second).end())
-		return;
-
 	pbnjson::JValue object = pbnjson::Object();
 
 	object.put("returnValue", true);
@@ -1781,8 +1729,14 @@ void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaDat
 
 	object.put("metaData", metaDataObj);
 
-	LS::SubscriptionPoint* subscriptionPoint = subscriptionDeviceIter->second;
-	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
+	for (auto watch : mGetMediaMetaDataWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
 }
 
 void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &adapterAddress,
@@ -1825,16 +1779,6 @@ void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &
 	else
 		mRemoteVolumes.insert(std::pair<std::string, int>(address, volume));
 
-	auto subscriptionIter = mGetRemoteVolumeSubscriptionsForMultipleAdapters.find(adapterAddress);
-	if (subscriptionIter == mGetRemoteVolumeSubscriptionsForMultipleAdapters.end())
-		return;
-
-
-	auto subscriptionDeviceIter = (subscriptionIter->second).find(address);
-	if (subscriptionDeviceIter == (subscriptionIter->second).end())
-		return;
-
-
 	pbnjson::JValue object = pbnjson::Object();
 
 	object.put("returnValue", true);
@@ -1843,9 +1787,14 @@ void BluetoothAvrcpProfileService::volumeChanged(int volume, const std::string &
 	object.put("adapterAddress", adapterAddress);
 	object.put("volume", volume);
 
-	LS::SubscriptionPoint *subscriptionPoint = subscriptionDeviceIter->second;
-	LSUtils::postToSubscriptionPoint(subscriptionPoint, object);
-
+	for (auto watch : mGetRemoteVolumeWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
 }
 
 void BluetoothAvrcpProfileService::passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus, const std::string &address)
