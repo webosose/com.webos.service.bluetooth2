@@ -125,6 +125,7 @@ private:
 	bool getFilteringDeviceStatus(LSMessage &message);
 	bool startDiscovery(LSMessage &message);
 	bool cancelDiscovery(LSMessage &message);
+	bool getConnectedDevices(LSMessage &message);
 	bool getDeviceStatus(LSMessage &message);
 	bool setDeviceState(LSMessage &msg);
 	bool pair(LSMessage &message);

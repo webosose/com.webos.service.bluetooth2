@@ -89,6 +89,7 @@ public:
 	bool unpair(LS::Message &request, pbnjson::JValue &requestObj);
 	bool awaitPairingRequests(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getFilteringDeviceStatus(LS::Message &request, pbnjson::JValue &requestObj);
+	bool getConnectedDevices(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getDeviceStatus(LS::Message &request, pbnjson::JValue &requestObj);
 	bool setDeviceState(LS::Message &request, pbnjson::JValue &requestObj);
 
@@ -128,6 +129,7 @@ public:
 
 	void appendCurrentStatus(pbnjson::JValue &object);
 	void appendFilteringDevices(std::string senderName, pbnjson::JValue &object);
+	void appendConnectedDevices(pbnjson::JValue &object);
 	void appendDevices(pbnjson::JValue &object);
 	void appendLeDevices(pbnjson::JValue &object);
 	void appendLeDevicesByScanId(pbnjson::JValue &object, uint32_t scanId);
@@ -139,6 +141,7 @@ public:
 	void appendConnectedRoles(pbnjson::JValue &object, BluetoothDevice *device);
 
 	void notifySubscriberLeDevicesChanged();
+	void notifySubscribersConnectedDevicesChanged();
 	void notifySubscribersDevicesChanged();
 	void notifySubscribersFilteredDevicesChanged();
 	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId);
@@ -182,6 +185,7 @@ private:
 	std::unordered_map <std::string, LSUtils::ClientWatch*> mGetDevicesWatches;
 	std::unordered_map <uint32_t, LSUtils::ClientWatch*> mStartScanWatches;
 	LS::SubscriptionPoint mGetDevicesSubscriptions;
+	LS::SubscriptionPoint mGetConnectedDevicesSubscriptions;
 	std::vector<BluetoothServiceClassInfo> mSupportedServiceClasses;
 	std::vector<std::string> mEnabledServiceClasses;
 	BluetoothManagerService *mBluetoothManagerService;

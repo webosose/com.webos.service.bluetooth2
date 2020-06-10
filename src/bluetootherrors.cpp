@@ -240,7 +240,8 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_PBAP_OBJECT_PARAM_MISSING, "Required 'object ' parameter is not supplied"},
 	{BT_ERR_NOT_NOT_SUPPORTED_BY_REMOTE_DEVICE, "feature is not supported by remote device"},
 	{BT_ERR_PBAP_VCARD_HANDLE_PARAM_MISSING, "Required 'vCardHandle' parameter is not supplied"},
-	{BT_ERR_PBAP_FILTER_PARAM_MISSING, "Required 'filter' parameter is not supplied"}
+	{BT_ERR_PBAP_FILTER_PARAM_MISSING, "Required 'filter' parameter is not supplied"},
+	{BT_ERR_AVRCP_NO_CONNECTED_DEVICES, "No AVRCP connected device exist"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
