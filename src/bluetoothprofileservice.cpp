@@ -294,6 +294,8 @@ void BluetoothProfileService::propertiesChanged(const std::string &adapterAddres
 
 	bool connected = false;
 
+	auto adapterInfo = getManager()->findAdapterInfo(adapterAddress);
+
 	for (auto prop : properties)
 	{
 		switch (prop.getType())
@@ -302,7 +304,9 @@ void BluetoothProfileService::propertiesChanged(const std::string &adapterAddres
 			connected = prop.getValue<bool>();
 
 			if (!connected)
+			{
 				markDeviceAsNotConnected(adapterAddress, address);
+			}
 			else
 			{
 				markDeviceAsNotConnecting(adapterAddress, address);
@@ -310,6 +314,7 @@ void BluetoothProfileService::propertiesChanged(const std::string &adapterAddres
 			}
 
 			notifyStatusSubscribers(adapterAddress, address, connected);
+			adapterInfo->notifySubscribersConnectedDevicesChanged();
 
 			// When we switch from connected to disconnected we always just try to
 			// remove all subscription. Called method will just return when subscriptions

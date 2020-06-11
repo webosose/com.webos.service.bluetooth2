@@ -396,7 +396,6 @@ void BluetoothManagerAdapter::deviceFound(BluetoothPropertiesList properties)
 
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
-	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::deviceFound(const std::string &address, BluetoothPropertiesList properties)
@@ -413,7 +412,6 @@ void BluetoothManagerAdapter::deviceFound(const std::string &address, BluetoothP
 
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
-	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::devicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties)
@@ -425,7 +423,6 @@ void BluetoothManagerAdapter::devicePropertiesChanged(const std::string &address
 	{
 		notifySubscribersFilteredDevicesChanged();
 		notifySubscribersDevicesChanged();
-		notifySubscribersConnectedDevicesChanged();
 	}
 }
 
@@ -442,7 +439,6 @@ void BluetoothManagerAdapter::deviceRemoved(const std::string &address)
 	delete device;
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
-	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::leDeviceFound(const std::string &address, BluetoothPropertiesList properties)
@@ -1969,7 +1965,6 @@ void BluetoothManagerAdapter::startPairing(BluetoothDevice *device)
 	mBluetoothManagerService->notifySubscribersAboutStateChange();
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
-	notifySubscribersConnectedDevicesChanged();
 
 	// Device discovery needs to be stopped for pairing
 	getAdapter()->cancelDiscovery(std::bind(&BluetoothManagerAdapter::cancelDiscoveryCallback, this, device, _1));
@@ -1982,7 +1977,6 @@ void BluetoothManagerAdapter::stopPairing()
 	mBluetoothManagerService->notifySubscribersAboutStateChange();
 	notifySubscribersFilteredDevicesChanged();
 	notifySubscribersDevicesChanged();
-	notifySubscribersConnectedDevicesChanged();
 }
 
 void BluetoothManagerAdapter::cancelIncomingPairingSubscription()
