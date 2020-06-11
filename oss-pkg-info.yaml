@@ -1,0 +1,4 @@
+Open Source Software Package:
+- name: webOSOSE-com.webos.service.bluetooth2
+  source: https://github.com/webosose/com.webos.service.bluetooth2
+  license: Apache-2.0
