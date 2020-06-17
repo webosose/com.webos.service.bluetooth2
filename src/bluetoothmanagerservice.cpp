@@ -21,6 +21,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <regex>
 
 #include "bluetoothmanagerservice.h"
 #include "bluetoothdevice.h"
@@ -217,7 +218,7 @@ bool BluetoothManagerService::isRequestedAdapterAvailable(LS::Message &request, 
 	if (requestObj.hasKey("adapterAddress"))
 	{
 		adapterAddress = convertToLower(requestObj["adapterAddress"].asString());
-		if (!isAdapterAvailable(adapterAddress))
+		if (!isValidAddress(adapterAddress) || !isAdapterAvailable(adapterAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
 			return false;
@@ -326,6 +327,13 @@ int BluetoothManagerService::getAdvSize(AdvertiseData advData, bool flagRequired
 	}
 
 	return size;
+}
+
+bool BluetoothManagerService::isValidAddress(std::string& address)
+{
+	std::replace(address.begin(), address.end(), '-', ':');
+	std::regex addressRegex("^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$");
+	return std::regex_match(address, addressRegex);
 }
 
 bool BluetoothManagerService::getAdvertisingState() {

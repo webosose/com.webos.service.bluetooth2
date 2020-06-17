@@ -115,7 +115,7 @@ public:
 	bool isRoleEnable(const std::string &address, const std::string &role);
 	std::string getMessageOwner(LSMessage *message);
 	int getAdvSize(AdvertiseData advData, bool flagRequired);
-
+	bool isValidAddress(std::string& address);
 
 private:
 	bool setState(LSMessage &message);
