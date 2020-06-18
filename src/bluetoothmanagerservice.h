@@ -215,6 +215,7 @@ private:
 	LSUtils::ClientWatch *mAdvertisingWatch;
 
 	std::unordered_map<uint8_t, AdvertiserInfo*> mAdvertisers;
+	std::map<uint8_t, std::string> mAdvIdAdapterMap;
 
 	LS::SubscriptionPoint mGetStatusSubscriptions;
 	LS::SubscriptionPoint mGetAdvStatusSubscriptions;

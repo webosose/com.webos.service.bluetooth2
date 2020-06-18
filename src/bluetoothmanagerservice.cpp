@@ -2061,7 +2061,8 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 {
 	BT_DEBUG("Advertiser(%d) dropped", advertiserId);
 
-	std::string adapterAddress = mAddress;
+	std::string adapterAddress = mAdvIdAdapterMap[advertiserId];
+
 	auto leAdvEnableCallback = [this, advertiserId, adapterAddress](BluetoothError enableError)
 	{
 		auto unregisterAdvCallback = [this,adapterAddress, advertiserId](BluetoothError registerError)
@@ -2082,9 +2083,11 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 			responseObj.put("subscribed", false);
 			responseObj.put("returnValue", true);
 			LSUtils::postToClient(mAdvertisingWatch->getMessage(), responseObj);
+			auto itr = mAdvIdAdapterMap.find(advertiserId);
+			if (itr != mAdvIdAdapterMap.end())
+				mAdvIdAdapterMap.erase(itr);
 		};
-		//TODO remove usage of default adapter
-		mDefaultAdapter->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
 
 		if (enableError != BLUETOOTH_ERROR_NONE)
 		{
@@ -2095,8 +2098,7 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 		}
 	};
 
-	//TODO remove usage of default adapter
-	mDefaultAdapter->disableAdvertiser(advertiserId, leAdvEnableCallback);
+	findAdapterInfo(adapterAddress)->getAdapter()->disableAdvertiser(advertiserId, leAdvEnableCallback);
 	return true;
 }
 
@@ -2417,12 +2419,15 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 													  OBJARRAY(proprietaryData, OBJSCHEMA_2(PROP(type, integer), ARRAY(data, integer))))),
 											  OBJECT(scanResponse, OBJSCHEMA_5(PROP(includeTxPower, boolean), PROP(includeName, boolean),
 													  ARRAY(manufacturerData, integer), OBJARRAY(services, OBJSCHEMA_2(PROP(uuid, string),ARRAY(data,integer))),
-													  OBJARRAY(proprietaryData, OBJSCHEMA_2(PROP(type, integer), ARRAY(data, integer)))))));
+													  OBJARRAY(proprietaryData, OBJSCHEMA_2(PROP(type, integer), ARRAY(data, integer)))))) REQUIRED_1(subscribe));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
 		if (parseError != JSON_PARSE_SCHEMA_ERROR)
 			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else if (!request.isSubscription())
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
 
 		else
 			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
@@ -2492,6 +2497,7 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 						responseObj.put("returnValue", true);
 						responseObj.put("advertiserId", advertiserId);
 						notifySubscribersAdvertisingChanged(adapterAddress);
+						mAdvIdAdapterMap[advertiserId] = adapterAddress;
 					}
 					else
 					{
@@ -2609,6 +2615,9 @@ bool BluetoothManagerService::disableAdvertising(LSMessage &message)
 			responseObj.put("subscribed", false);
 			responseObj.put("returnValue", true);
 			LSUtils::postToClient(mAdvertisingWatch->getMessage(), responseObj);
+			auto itr = mAdvIdAdapterMap.find(advertiserId);
+			if (itr != mAdvIdAdapterMap.end())
+				mAdvIdAdapterMap.erase(itr);
 		};
 		findAdapterInfo(adapterAddress)->getAdapter()->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
 
