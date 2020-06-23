@@ -1156,7 +1156,7 @@ bool BluetoothAvrcpProfileService::getRemoteVolume(LSMessage &message)
 
 			if (isDeviceConnected(adapterAddress, device->getAddress()))
 			{
-				BT_DEBUG("AVRCP: Found devices with AVRCP connected : [%s : %d] [%s]", __FUNCTION__, __LINE__, device->getName());
+				BT_DEBUG("AVRCP: Found devices with AVRCP connected : [%s : %d] [%s]", __FUNCTION__, __LINE__, device->getName().c_str());
 				connectedDeviceResponseObj.put("returnValue", true);
 				connectedDeviceResponseObj.put("subscribed", subscribed);
 				connectedDeviceResponseObj.put("adapterAddress", adapterAddress);
@@ -1573,8 +1573,8 @@ std::vector<std::string>* BluetoothAvrcpProfileService::findRemoteFeatures(const
 
 void BluetoothAvrcpProfileService::removeClientWatch(std::list<BluetoothClientWatch*> *clientWatch, const std::string& senderName)
 {
-	for (auto watch = clientWatch->begin();
-		watch != clientWatch->end(); ++watch)
+	auto watch = clientWatch->begin();
+	while (watch != clientWatch->end())
 	{
 
 		const char* senderNameWatch = LSMessageGetApplicationID((*watch)->getMessage());
@@ -1590,8 +1590,12 @@ void BluetoothAvrcpProfileService::removeClientWatch(std::list<BluetoothClientWa
 		if (senderName == senderNameWatch)
 		{
 			auto watchToRemove = watch;
-			watch = clientWatch->erase(watch);
 			delete (*watchToRemove);
+			watch = clientWatch->erase(watch);
+		}
+		else
+		{
+			++watch;
 		}
 	}
 }

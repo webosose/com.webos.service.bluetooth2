@@ -863,14 +863,14 @@ void BluetoothManagerAdapter::appendConnectedDevices(pbnjson::JValue &object)
 		{
 			if(profile->isDeviceConnected(getAddress(), device->getAddress()))
 			{
-				BT_DEBUG("MANAGER_SERVICE", 0, "There is connected devices with [%s] profile : [%s : %d]", profile->getName(), __FUNCTION__, __LINE__);
+				BT_DEBUG("There is connected devices with [%s] profile : [%s : %d]", profile->getName().c_str(), __FUNCTION__, __LINE__);
 				anyProfileConnected = true;
 				break;
 			}
 		}
 		if (anyProfileConnected)
 		{
-			BT_DEBUG("MANAGER_SERVICE", 0, "Device is connected via at least one profile : [%s : %d]", __FUNCTION__, __LINE__);
+			BT_DEBUG("Device is connected via at least one profile : [%s : %d]", __FUNCTION__, __LINE__);
 			deviceObj.put("name", device->getName());
 			deviceObj.put("address", device->getAddress());
 			deviceObj.put("typeOfDevice", device->getTypeAsString());
