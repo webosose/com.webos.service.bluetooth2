@@ -72,6 +72,7 @@ public:
 		std::string adapterAddress, std::string deviceAddress);
 	bool getSupportedNotificationEvents(LSMessage &message);
 	bool getRemoteFeatures(LSMessage &message);
+	bool getPlayerInfo(LSMessage &message);
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
@@ -92,6 +93,9 @@ public:
 		const std::string &adapterAddress, const std::string& address);
 	void playerApplicationSettingsReceived(const BluetoothPlayerApplicationSettingsPropertiesList& properties,
 		const std::string& adapterAddress, const std::string& address);
+
+	void playerInfoReceived(const BluetothPlayerInfoList &playerInfoList,
+			const std::string &adapterAddress, const std::string &address);
 
 	/*
 	 * This will be deprecated on implementation of remoteFeaturesReceived with role.
@@ -139,11 +143,13 @@ private:
 	std::string shuffleEnumToString(BluetoothPlayerApplicationSettingsShuffle shuffle);
 	std::string scanEnumToString(BluetoothPlayerApplicationSettingsScan scan);
 	void appendCurrentApplicationSettings(pbnjson::JValue &object);
-
+	std::string playerTypeEnumToString(const BluetoothAvrcpPlayerType type);
 	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties,
 			LS::Message &request, std::string &adapterAddress, std::string &address, BluetoothError error);
 	std::vector<std::string> *findRemoteFeatures(const std::string& adapterAddress, const std::string& address, std::string role);
 	void clearRemoteFeatures(const std::string &adapterAddress, const std::string &address);
+	void clearPlayerInfo(const std::string &adapterAddress,
+						 const std::string &address);
 
 private:
 	std::string mEqualizer;
@@ -183,10 +189,14 @@ private:
 	std::list<BluetoothClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetRemoteVolumeWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetPlayerInfoWatchesForMultipleAdapters;
+
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
 	/* Features supported by remote AVRCP controller device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mCTRemoteFeturesForMultipleAdapters;
+	/* Playerinfo list. map<adapterAddress, map<deviceAddress, playerInfoList> */
+	std::map<std::string, std::map<std::string, BluetothPlayerInfoList>> mPlayerInfoListForMultipleAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H

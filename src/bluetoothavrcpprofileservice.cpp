@@ -62,6 +62,7 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, setAbsoluteVolume)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getRemoteVolume)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, receivePassThroughCommand)
+		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getPlayerInfo)
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, internal)
@@ -113,6 +114,62 @@ BluetoothAvrcpProfileService::~BluetoothAvrcpProfileService()
 		delete clientWatch;
 	}
 	mGetSupportedNotificationEventsWatches.clear();
+
+	for (auto iter = mNotificationEventsWatchesForMultipleAdapters.begin();
+		 iter != mNotificationEventsWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mNotificationEventsWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mGetMediaMetaDataWatchesForMultipleAdapters.begin();
+		 iter != mGetMediaMetaDataWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mGetMediaMetaDataWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mMediaPlayStatusWatchesForMultipleAdapters.begin();
+		 iter != mMediaPlayStatusWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mMediaPlayStatusWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mPlayerApplicationSettingsWatchesForMultipleAdapters.begin();
+		 iter != mPlayerApplicationSettingsWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mPlayerApplicationSettingsWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mReceivePassThroughCommandWatchesForMultipleAdapters.begin();
+		 iter != mReceivePassThroughCommandWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mReceivePassThroughCommandWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mGetRemoteVolumeWatchesForMultipleAdapters.begin();
+		 iter != mGetRemoteVolumeWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mGetRemoteVolumeWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters.begin();
+		 iter != mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mGetPlayerInfoWatchesForMultipleAdapters.begin();
+		 iter != mGetPlayerInfoWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mGetPlayerInfoWatchesForMultipleAdapters.clear();
 }
 
 void BluetoothAvrcpProfileService::initialize()
@@ -157,6 +214,7 @@ void BluetoothAvrcpProfileService::propertiesChanged(const std::string &adapterA
 			mRemoteVolumes.erase(it);
 		/* Clear the remote features supported for the device */
 		clearRemoteFeatures(adapterAddress, address);
+		clearPlayerInfo(adapterAddress, address);
 	}
 }
 
@@ -174,6 +232,20 @@ void BluetoothAvrcpProfileService::clearRemoteFeatures(const std::string &adapte
 	{
 		remoteFeatures->clear();
 		remoteFeatures = NULL;
+	}
+}
+
+void BluetoothAvrcpProfileService::clearPlayerInfo(
+	const std::string &adapterAddress, const std::string &address)
+{
+	auto playerInfoListIter = mPlayerInfoListForMultipleAdapters.find(adapterAddress);
+	if (playerInfoListIter != mPlayerInfoListForMultipleAdapters.end())
+	{
+		(playerInfoListIter->second).erase(address);
+	}
+	if ((playerInfoListIter->second).empty())
+	{
+		mPlayerInfoListForMultipleAdapters.erase(adapterAddress);
 	}
 }
 
@@ -2375,4 +2447,172 @@ std::string BluetoothAvrcpProfileService::scanEnumToString(BluetoothPlayerApplic
 		return "group";
 	else
 		return "unknown";
+}
+
+bool BluetoothAvrcpProfileService::getPlayerInfo(LSMessage &message)
+{
+	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string),
+				PROP(address, string), PROP_WITH_VAL_1(subscribe, boolean, true))
+			REQUIRED_2(subscribe, address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!request.isSubscription())
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string deviceAddress;
+	deviceAddress = convertToLower(requestObj["address"].asString());
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+
+	bool retVal = addClientWatch(request, &mGetPlayerInfoWatchesForMultipleAdapters,
+			adapterAddress, deviceAddress);
+	if (!retVal)
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	responseObj.put("subscribed", true);
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", deviceAddress);
+
+	auto playerInfoListIter = mPlayerInfoListForMultipleAdapters.find(adapterAddress);
+	if (playerInfoListIter != mPlayerInfoListForMultipleAdapters.end())
+	{
+		auto playerInfoIter = (playerInfoListIter->second).find(deviceAddress);
+		if (playerInfoIter != (playerInfoListIter->second).end())
+		{
+			if (!(playerInfoIter->second).empty())
+			{
+				pbnjson::JValue playerInfoList = pbnjson::Array();
+				for (auto playerInfo = (playerInfoIter->second).begin();
+					 playerInfo != (playerInfoIter->second).end(); ++playerInfo)
+				{
+					pbnjson::JValue playerInfoObj = pbnjson::Object();
+					playerInfoObj.put("name", playerInfo->getName());
+					playerInfoObj.put("type", playerTypeEnumToString(playerInfo->getType()));
+					playerInfoObj.put("addressed", playerInfo->getAddressed());
+					playerInfoObj.put("browsable", playerInfo->getBrowsable());
+					playerInfoObj.put("searchable", playerInfo->getSearchable());
+					playerInfoObj.put("playlistPath", playerInfo->getPlayListPath());
+					playerInfoList.append(playerInfoObj);
+				}
+				responseObj.put("playerInfo", playerInfoList);
+			}
+		}
+	}
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
+
+void BluetoothAvrcpProfileService::playerInfoReceived(
+		const BluetothPlayerInfoList &playerInfoList,
+		const std::string &adapterAddress, const std::string &address)
+{
+	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	auto playerInfoListIter = mPlayerInfoListForMultipleAdapters.find(adapterAddress);
+	if (playerInfoListIter == mPlayerInfoListForMultipleAdapters.end())
+	{
+		std::map<std::string, BluetothPlayerInfoList> playerInfoListDevice;
+		BluetothPlayerInfoList playerInfo;
+		playerInfo.assign(playerInfoList.begin(), playerInfoList.end());
+		playerInfoListDevice.insert(
+			std::pair<std::string, BluetothPlayerInfoList>(address, playerInfo));
+		mPlayerInfoListForMultipleAdapters.insert(
+			std::pair<std::string,
+					  std::map<std::string, BluetothPlayerInfoList>>(adapterAddress, playerInfoListDevice));
+	}
+	else
+	{
+		auto playerInfoIter = (playerInfoListIter->second).find(address);
+		if (playerInfoIter == (playerInfoListIter->second).end())
+		{
+			BluetothPlayerInfoList playerInfo;
+			playerInfo.assign(playerInfoList.begin(), playerInfoList.end());
+			(playerInfoListIter->second).insert(
+				std::pair<std::string, BluetothPlayerInfoList>(address, playerInfo));
+		}
+		else
+		{
+			(playerInfoIter->second).clear();
+			(playerInfoIter->second).assign(playerInfoList.begin(), playerInfoList.end());
+		}
+	}
+
+	pbnjson::JValue object = pbnjson::Object();
+	object.put("returnValue", true);
+	object.put("subscribed", true);
+	object.put("address", address);
+	object.put("adapterAddress", adapterAddress);
+
+	pbnjson::JValue playerInfoListObj = pbnjson::Array();
+	for (auto playerInfo : playerInfoList)
+	{
+		pbnjson::JValue playerInfoObj = pbnjson::Object();
+		playerInfoObj.put("name", playerInfo.getName());
+		playerInfoObj.put("type", playerTypeEnumToString(playerInfo.getType()));
+		playerInfoObj.put("addressed", playerInfo.getAddressed());
+		playerInfoObj.put("browsable", playerInfo.getBrowsable());
+		playerInfoObj.put("searchable", playerInfo.getSearchable());
+		playerInfoObj.put("playlistPath", playerInfo.getPlayListPath());
+
+		playerInfoListObj.append(playerInfoObj);
+	}
+	object.put("playerInfo", playerInfoListObj);
+
+	for (auto watch : mGetPlayerInfoWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) ==
+				convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+}
+
+std::string BluetoothAvrcpProfileService::playerTypeEnumToString(const BluetoothAvrcpPlayerType type)
+{
+	switch(type)
+	{
+		case BluetoothAvrcpPlayerType::PLAYER_TYPE_AUDIO:
+			return "Audio";
+		case BluetoothAvrcpPlayerType::PLAYER_TYPE_AUDIO_BROADCAST:
+			return "Audio Broadcasting";
+		case BluetoothAvrcpPlayerType::PLAYER_TYPE_VIDEO:
+			return "Video";
+		case BluetoothAvrcpPlayerType::PLAYER_TYPE_VIDEO_BROADCAST:
+			return "Video Broadcasting";
+		default:
+			return "Audio";
+	}
 }
