@@ -66,6 +66,9 @@ BluetoothOppProfileService::~BluetoothOppProfileService()
 
 void BluetoothOppProfileService::initialize()
 {
+	if (mImpl)
+		return;
+
 	BluetoothProfileService::initialize();
 
 	if (mImpl)

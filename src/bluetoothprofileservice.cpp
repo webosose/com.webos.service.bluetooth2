@@ -296,6 +296,9 @@ void BluetoothProfileService::propertiesChanged(const std::string &adapterAddres
 
 	bool connected = false;
 
+	if (getName() == "OPP")
+		propertiesChanged(address, properties);
+
 	auto adapterInfo = getManager()->findAdapterInfo(adapterAddress);
 
 	for (auto prop : properties)

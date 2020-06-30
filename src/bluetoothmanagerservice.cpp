@@ -504,14 +504,10 @@ void BluetoothManagerService::initializeProfiles(BluetoothManagerAdapter *adapte
 {
 	for (auto profile : mProfiles)
 	{
-		if (profile->getName() == "GATT")
-		{
+		if ((profile->getName() == "GATT") || (profile->getName() == "SPP") || (profile->getName() == "OPP"))
 			profile->initialize();
-		}
 		else
-		{
 			profile->initialize(adapter->getAddress());
-		}
 	}
 }
 

@@ -47,6 +47,9 @@ BluetoothSppProfileService::~BluetoothSppProfileService()
 
 void BluetoothSppProfileService::initialize()
 {
+	if (mImpl)
+		return;
+
 	BluetoothProfileService::initialize();
 
 	if (mImpl)
