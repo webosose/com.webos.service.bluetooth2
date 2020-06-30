@@ -504,7 +504,14 @@ void BluetoothManagerService::initializeProfiles(BluetoothManagerAdapter *adapte
 {
 	for (auto profile : mProfiles)
 	{
-		profile->initialize(adapter->getAddress());
+		if (profile->getName() == "GATT")
+		{
+			profile->initialize();
+		}
+		else
+		{
+			profile->initialize(adapter->getAddress());
+		}
 	}
 }
 

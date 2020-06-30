@@ -87,6 +87,10 @@ BluetoothGattProfileService::BluetoothGattProfileService(BluetoothManagerService
 
 void BluetoothGattProfileService::initialize()
 {
+	if (mImpl)
+	{
+		return;
+	}
 	BluetoothProfileService::initialize();
 
 	if (mImpl)

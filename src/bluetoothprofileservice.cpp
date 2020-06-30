@@ -59,6 +59,8 @@ void BluetoothProfileService::initialize()
 
 	mImpl = defaultAdapter->getProfile(mName);
 
+	mImpls.insert(std::pair<std::string, BluetoothProfile*>(getManager()->getAddress(), mImpl));
+
 	if (mImpl)
 		mImpl->registerObserver(this);
 }
