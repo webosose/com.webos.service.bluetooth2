@@ -79,6 +79,14 @@ bool BluetoothDevice::update(BluetoothPropertiesList &properties)
 			updateSupportedServiceClasses();
 			changed = true;
 			break;
+		case BluetoothProperty::Type::MAP_INSTANCES_NAME:
+			mMapInstancesName = prop.getValue<std::vector<std::string>>();
+			changed = true;
+			break;
+		case BluetoothProperty::Type::MAP_SUPPORTED_MESSAGE_TYPE:
+			mMapSupportedMessageTypes = prop.getValue<std::map<std::string, std::vector<std::string>>>();
+			changed = true;
+			break;
 		case BluetoothProperty::Type::CLASS_OF_DEVICE:
 			mClassOfDevice = prop.getValue<uint32_t>();
 			changed = true;

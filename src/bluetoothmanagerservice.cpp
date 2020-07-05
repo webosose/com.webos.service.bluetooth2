@@ -37,6 +37,7 @@
 #include "bluetoothsppprofileservice.h"
 #include "bluetoothhfpprofileservice.h"
 #include "bluetoothpanprofileservice.h"
+#include "bluetoothmapprofileservice.h"
 #include "bluetoothhidprofileservice.h"
 #include "bluetoothgattancsprofile.h"
 #include "bluetoothmanageradapter.h"
@@ -408,6 +409,9 @@ void BluetoothManagerService::createProfiles()
 
 	if (isServiceClassEnabled("HID"))
 		mProfiles.push_back(new BluetoothHidProfileService(this));
+
+	if (isServiceClassEnabled("MAP"))
+		mProfiles.push_back(new BluetoothMapProfileService(this));
 }
 
 void BluetoothManagerService::notifySubscribersAboutStateChange()

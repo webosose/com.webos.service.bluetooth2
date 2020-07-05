@@ -49,6 +49,8 @@ public:
 	int getRssi() const { return mRssi; }
 	void setPairing(bool pairingStatus) { mPairing = pairingStatus; }
 	std::vector<std::string> getUuids() const { return mUuids; }
+	std::vector<std::string> getMapInstancesName() const { return mMapInstancesName; }
+	std::map<std::string, std::vector<std::string>> getSupportedMessageTypes() const { return mMapSupportedMessageTypes; }
 	std::vector<BluetoothServiceClassInfo> getSupportedServiceClasses() const { return mSupportedServiceClasses; }
 	bool getConnected() const { return mConnected; }
 	uint32_t getRole() const { return mRole; }
@@ -66,6 +68,8 @@ private:
 	BluetoothDeviceType mType;
 	uint32_t mClassOfDevice;	// Specified by https://www.bluetooth.org/en-us/specification/assigned-numbers/baseband
 	std::vector<std::string> mUuids;
+	std::vector<std::string> mMapInstancesName;
+	std::map<std::string, std::vector<std::string>> mMapSupportedMessageTypes;
 	bool mPaired;
 	bool mPairing;
 	bool mTrusted;
