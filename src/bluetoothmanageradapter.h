@@ -142,11 +142,10 @@ public:
 	void appendConnectedRoles(pbnjson::JValue &object, BluetoothDevice *device);
 
 	void notifySubscriberLeDevicesChanged();
-	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId, BluetoothDevice *device = NULL);
 	void notifySubscribersConnectedDevicesChanged();
 	void notifySubscribersDevicesChanged();
 	void notifySubscribersFilteredDevicesChanged();
-	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId);
+	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId, BluetoothDevice *device = NULL);
 
 	void notifyStartScanListenerDropped(uint32_t scanId);
 	bool notifyPairingListenerDropped(bool incoming);

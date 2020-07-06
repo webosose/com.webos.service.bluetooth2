@@ -804,7 +804,7 @@ void BluetoothManagerAdapter::appendLeDevices(pbnjson::JValue &object)
 	object.put("devices", devicesObj);
 }
 
-void BluetoothManagerService::appendLeRecentDevice(pbnjson::JValue &object, BluetoothDevice *device)
+void BluetoothManagerAdapter::appendLeRecentDevice(pbnjson::JValue &object, BluetoothDevice *device)
 {
 
 	if(NULL == device)
