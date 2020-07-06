@@ -73,6 +73,8 @@ public:
 	bool getSupportedNotificationEvents(LSMessage &message);
 	bool getRemoteFeatures(LSMessage &message);
 	bool getPlayerInfo(LSMessage &message);
+	/* AVRCP CT browse APIs */
+	bool getCurrentFolder(LSMessage &message);
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
@@ -93,16 +95,17 @@ public:
 		const std::string &adapterAddress, const std::string& address);
 	void playerApplicationSettingsReceived(const BluetoothPlayerApplicationSettingsPropertiesList& properties,
 		const std::string& adapterAddress, const std::string& address);
-
 	void playerInfoReceived(const BluetothPlayerInfoList &playerInfoList,
 			const std::string &adapterAddress, const std::string &address);
-
 	/*
 	 * This will be deprecated on implementation of remoteFeaturesReceived with role.
 	 */
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address);
-
 	void propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
+
+	/* AVRCP CT browse observer APIs */
+	void currentFolderReceived(const std::string currentFolder,
+							   const std::string &adapterAddress, const std::string &address);
 
 private:
 	class MediaRequest
@@ -150,6 +153,8 @@ private:
 	void clearRemoteFeatures(const std::string &adapterAddress, const std::string &address);
 	void clearPlayerInfo(const std::string &adapterAddress,
 						 const std::string &address);
+	void clearCurrentFolder(const std::string &adapterAddress,
+							const std::string &address);
 
 private:
 	std::string mEqualizer;
@@ -190,6 +195,7 @@ private:
 	std::list<BluetoothClientWatch*> mGetRemoteVolumeWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetPlayerInfoWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetCurrentFolderWatchesForMultipleAdapters;
 
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
@@ -197,6 +203,8 @@ private:
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mCTRemoteFeturesForMultipleAdapters;
 	/* Playerinfo list. map<adapterAddress, map<deviceAddress, playerInfoList> */
 	std::map<std::string, std::map<std::string, BluetothPlayerInfoList>> mPlayerInfoListForMultipleAdapters;
+	std::map<std::string, std::map<std::string, std::string>> mCurrentFolderForMultipleAdapters;
+
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H

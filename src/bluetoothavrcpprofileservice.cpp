@@ -72,11 +72,18 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getRemoteFeatures)
 	LS_CREATE_CATEGORY_END
 
+	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, browse)
+		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getCurrentFolder)
+	LS_CREATE_CATEGORY_END
+
 	manager->registerCategory("/avrcp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/avrcp", this);
 
 	manager->registerCategory("/avrcp/internal", LS_CATEGORY_TABLE_NAME(internal), NULL, NULL);
 	manager->setCategoryData("/avrcp/internal", this);
+
+	manager->registerCategory("/avrcp/browse", LS_CATEGORY_TABLE_NAME(browse), NULL, NULL);
+	manager->setCategoryData("/avrcp/browse", this);
 
 	mSupportedNotificationEvents.clear();
 }
@@ -170,6 +177,13 @@ BluetoothAvrcpProfileService::~BluetoothAvrcpProfileService()
 		delete (*iter);
 	}
 	mGetPlayerInfoWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mGetCurrentFolderWatchesForMultipleAdapters.begin();
+		 iter != mGetCurrentFolderWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mGetCurrentFolderWatchesForMultipleAdapters.clear();
 }
 
 void BluetoothAvrcpProfileService::initialize()
@@ -215,6 +229,7 @@ void BluetoothAvrcpProfileService::propertiesChanged(const std::string &adapterA
 		/* Clear the remote features supported for the device */
 		clearRemoteFeatures(adapterAddress, address);
 		clearPlayerInfo(adapterAddress, address);
+		clearCurrentFolder(adapterAddress, address);
 	}
 }
 
@@ -246,6 +261,20 @@ void BluetoothAvrcpProfileService::clearPlayerInfo(
 	if ((playerInfoListIter->second).empty())
 	{
 		mPlayerInfoListForMultipleAdapters.erase(adapterAddress);
+	}
+}
+
+void BluetoothAvrcpProfileService::clearCurrentFolder(
+	const std::string &adapterAddress, const std::string &address)
+{
+	auto listIter = mCurrentFolderForMultipleAdapters.find(adapterAddress);
+	if (listIter != mCurrentFolderForMultipleAdapters.end())
+	{
+		(listIter->second).erase(address);
+	}
+	if ((listIter->second).empty())
+	{
+		mCurrentFolderForMultipleAdapters.erase(adapterAddress);
 	}
 }
 
@@ -2615,4 +2644,125 @@ std::string BluetoothAvrcpProfileService::playerTypeEnumToString(const Bluetooth
 		default:
 			return "Audio";
 	}
+}
+
+void BluetoothAvrcpProfileService::currentFolderReceived(
+	const std::string currentFolder, const std::string &adapterAddress,
+	const std::string &address)
+{
+	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	pbnjson::JValue object = pbnjson::Object();
+
+	object.put("returnValue", true);
+	object.put("subscribed", true);
+	object.put("address", address);
+	object.put("adapterAddress", adapterAddress);
+	object.put("folderName", currentFolder);
+
+	auto currentFolderIter = mCurrentFolderForMultipleAdapters.find(adapterAddress);
+	if (currentFolderIter == mCurrentFolderForMultipleAdapters.end())
+	{
+		std::map<std::string, std::string> currentFolderDevice;
+		currentFolderDevice.insert(
+			std::pair<std::string, std::string>(address, currentFolder));
+		mCurrentFolderForMultipleAdapters.insert(
+			std::pair<std::string,
+					  std::map<std::string, std::string>>(adapterAddress, currentFolderDevice));
+	}
+	else
+	{
+		auto currentFolderIterDevice = (currentFolderIter->second).find(address);
+		if (currentFolderIterDevice == (currentFolderIter->second).end())
+		{
+			(currentFolderIter->second).insert(std::pair<std::string, std::string>(address, currentFolder));
+		}
+		else
+		{
+			currentFolderIterDevice->second = currentFolder;
+		}
+	}
+	for (auto watch : mGetCurrentFolderWatchesForMultipleAdapters)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		{
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+}
+
+bool BluetoothAvrcpProfileService::getCurrentFolder(LSMessage &message){
+
+	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string), PROP(address, string),
+				PROP(subscribe, boolean))REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string deviceAddress;
+	deviceAddress = convertToLower(requestObj["address"].asString());
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+	bool subscribed =  false;
+
+	if (request.isSubscription())
+	{
+		bool retVal = addClientWatch(request, &mGetCurrentFolderWatchesForMultipleAdapters,
+				adapterAddress, deviceAddress);
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
+
+		subscribed = true;
+	}
+
+	std::string currentFolderName;
+
+	auto currentFolderIter = mCurrentFolderForMultipleAdapters.find(adapterAddress);
+	if (currentFolderIter != mCurrentFolderForMultipleAdapters.end())
+	{
+		auto currentFolderIterDevice = (currentFolderIter->second).find(deviceAddress);
+		if (currentFolderIterDevice != (currentFolderIter->second).end())
+		{
+			currentFolderName = currentFolderIterDevice->second;
+		}
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	responseObj.put("subscribed", subscribed);
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", deviceAddress);
+	responseObj.put("folderName", currentFolderName);
+
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
 }
