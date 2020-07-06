@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,6 +83,14 @@ void BluetoothHfpProfileService::initialize()
 
 	if (mImpl)
 		getImpl<BluetoothHfpProfile>()->registerObserver(this);
+}
+
+void BluetoothHfpProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	if (findImpl(adapterAddress))
+		getImpl<BluetoothHfpProfile>(adapterAddress)->registerObserver(this);
 }
 
 void BluetoothHfpProfileService::scoStateChanged(const std::string &address, bool state)

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <regex>
 
 #include "bluetoothmanagerservice.h"
 #include "bluetoothdevice.h"
@@ -38,6 +39,7 @@
 #include "bluetoothpanprofileservice.h"
 #include "bluetoothhidprofileservice.h"
 #include "bluetoothgattancsprofile.h"
+#include "bluetoothmanageradapter.h"
 #include "ls2utils.h"
 #include "clientwatch.h"
 #include "logging.h"
@@ -60,20 +62,12 @@ std::map<std::string, BluetoothPairingIOCapability> pairingIOCapability =
 
 BluetoothManagerService::BluetoothManagerService() :
 	LS::Handle("com.webos.service.bluetooth2"),
-	mPowered(false),
 	mAdvertising(false),
-	mDiscovering(false),
 	mWoBleEnabled(false),
 	mKeepAliveEnabled(false),
 	mKeepAliveInterval(1),
-	mDiscoveryTimeout(0),
-	mDiscoverable(false),
-	mDiscoverableTimeout(0),
-	mClassOfDevice(0),
 	mSil(0),
 	mDefaultAdapter(0),
-	mOutgoingPairingWatch(0),
-	mIncomingPairingWatch(0),
 	mAdvertisingWatch(0),
 	mGattAnsc(0)
 {
@@ -132,6 +126,7 @@ BluetoothManagerService::BluetoothManagerService() :
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothManagerService, device)
+		LS_CATEGORY_MAPPED_METHOD(getConnectedDevices, getConnectedDevices)
 		LS_CATEGORY_MAPPED_METHOD(getStatus, getDeviceStatus)
 		LS_CATEGORY_MAPPED_METHOD(setState, setDeviceState)
 	LS_CREATE_CATEGORY_END
@@ -169,7 +164,6 @@ BluetoothManagerService::BluetoothManagerService() :
 	setCategoryData("/le", this);
 
 	mGetStatusSubscriptions.setServiceHandle(this);
-	mGetDevicesSubscriptions.setServiceHandle(this);
 	mQueryAvailableSubscriptions.setServiceHandle(this);
 	mGetAdvStatusSubscriptions.setServiceHandle(this);
 	mGetKeepAliveStatusSubscriptions.setServiceHandle(this);
@@ -179,21 +173,16 @@ BluetoothManagerService::~BluetoothManagerService()
 {
 	BT_DEBUG("Shutting down bluetooth manager service ...");
 
-	for (auto profile : mProfiles)
-	{
-		if (profile)
-			delete profile;
-	}
+	if (mSil)
+		delete mSil;
 
 	if (mGattAnsc)
 		delete mGattAnsc;
 
-	if (mSil)
-		delete mSil;
-
 	BluetoothSILFactory::freeSILHandle();
 }
 
+//TODO move to BluetoothManagerAdapter (Based on discussion mProfiles should be part of each adapter?)
 bool BluetoothManagerService::isServiceClassEnabled(const std::string &serviceClass)
 {
 	for (auto currentServiceClass : mEnabledServiceClasses)
@@ -212,30 +201,45 @@ bool BluetoothManagerService::isDefaultAdapterAvailable() const
 
 bool BluetoothManagerService::isAdapterAvailable(const std::string &address)
 {
-	//TODO: When we have multiple adapters, look for address==one of the available adapterAddresses
-	//      currently only one default adapter is supported
-	std::string convertedAddress = convertToLower(address);
-	return (mAddress.compare(convertedAddress) == 0);
+	for(auto it = mAdaptersInfo.begin(); it != mAdaptersInfo.end(); it++)
+	{
+		std::string convertedAddress = convertToLower(address);
+		if (it->first.compare(convertedAddress) == 0)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool BluetoothManagerService::isRequestedAdapterAvailable(LS::Message &request, const pbnjson::JValue &requestObj, std::string &adapterAddress)
 {
 	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = convertToLower(requestObj["adapterAddress"].asString());
-	else
-		adapterAddress = mAddress;
-
-	if (!isAdapterAvailable(adapterAddress))
 	{
-		LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
-		return false;
+		adapterAddress = convertToLower(requestObj["adapterAddress"].asString());
+		if (!isValidAddress(adapterAddress) || !isAdapterAvailable(adapterAddress))
+		{
+			LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
+			return false;
+		}
 	}
+	else
+	{
+		adapterAddress = mAddress;
+		if (!isAdapterAvailable(adapterAddress))
+		{
+			LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+			return false;
+		}
+	}
+
 	return true;
 }
 
-bool BluetoothManagerService::isRoleEnable(const std::string &role)
+bool BluetoothManagerService::isRoleEnable(const std::string &address, const std::string &role)
 {
-	for (auto profile : mSupportedServiceClasses)
+	for (auto profile : findAdapterInfo(address)->getSupportedServiceClasses())
 	{
 		if(convertToLower(profile.getMnemonic()) == convertToLower(role))
 		{
@@ -318,10 +322,18 @@ int BluetoothManagerService::getAdvSize(AdvertiseData advData, bool flagRequired
 
 	if (advData.includeName)
 	{
-		size += overheadBytesPerField + mName.length();
+		//TODO multi adapter support required
+		size += overheadBytesPerField + findAdapterInfo(mAddress)->getName().length();
 	}
 
 	return size;
+}
+
+bool BluetoothManagerService::isValidAddress(std::string& address)
+{
+	std::replace(address.begin(), address.end(), '-', ':');
+	std::regex addressRegex("^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$");
+	return std::regex_match(address, addressRegex);
 }
 
 bool BluetoothManagerService::getAdvertisingState() {
@@ -342,11 +354,13 @@ std::string BluetoothManagerService::getAddress() const
 	return mAddress;
 }
 
+//TODO Multi adapter support
 bool BluetoothManagerService::isDeviceAvailable(const std::string &address) const
 {
+	auto devices = findAdapterInfo(mAddress)->getDevices();
 	std::string convertedAddress = convertToLower(address);
-	auto deviceIter = mDevices.find(convertedAddress);
-	if (deviceIter == mDevices.end())
+	auto deviceIter = devices.find(convertedAddress);
+	if (deviceIter == devices.end())
 		return false;
 
 	BluetoothDevice *device = deviceIter->second;
@@ -407,60 +421,6 @@ void BluetoothManagerService::notifySubscribersAboutStateChange()
 	LSUtils::postToSubscriptionPoint(&mGetStatusSubscriptions, responseObj);
 }
 
-void BluetoothManagerService::notifySubscribersFilteredDevicesChanged()
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	for (auto watchIter : mGetDevicesWatches)
-	{
-		std::string senderName = watchIter.first;
-		appendFilteringDevices(senderName, responseObj);
-		responseObj.put("returnValue", true);
-		LSUtils::postToClient(watchIter.second->getMessage(), responseObj);
-	}
-}
-
-void BluetoothManagerService::notifySubscribersDevicesChanged()
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	appendDevices(responseObj);
-
-	responseObj.put("returnValue", true);
-
-	LSUtils::postToSubscriptionPoint(&mGetDevicesSubscriptions, responseObj);
-}
-
-void BluetoothManagerService::notifySubscriberLeDevicesChanged()
-{
-	for (auto watchIter : mStartScanWatches)
-	{
-		pbnjson::JValue responseObj = pbnjson::Object();
-		appendLeDevices(responseObj);
-
-		responseObj.put("returnValue", true);
-		LSUtils::postToClient(watchIter.second->getMessage(), responseObj);
-	}
-}
-
-void BluetoothManagerService::notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId, BluetoothDevice *device)
-{
-	auto watchIter = mStartScanWatches.find(scanId);
-	if (watchIter == mStartScanWatches.end())
-		return;
-
-	LSUtils::ClientWatch *watch = watchIter->second;
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	appendLeDevicesByScanId(responseObj, scanId);
-
-	appendLeRecentDevice(responseObj, device);
-
-	responseObj.put("returnValue", true);
-
-	LSUtils::postToClient(watch->getMessage(), responseObj);
-}
-
 void BluetoothManagerService::notifySubscribersAdvertisingChanged(std::string adapterAddress)
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -490,6 +450,45 @@ void BluetoothManagerService::adaptersChanged()
 
 	assignDefaultAdapter();
 
+	mAdapters = mSil->getAdapters();
+
+	for (auto it = mAdaptersInfo.begin(); it != mAdaptersInfo.end(); )
+	{
+		bool found = false;
+		for (auto silAdapter : mAdapters)
+		{
+			if (silAdapter == it->second->getAdapter())
+			{
+				found = true;
+				 break;
+			}
+		}
+
+		if (!found)
+		{
+			BT_INFO("MANAGER_SERVICE", 0, "adaptersChanged erasing adapter [%s] from list", it->first.c_str());
+			delete it->second;
+			it = mAdaptersInfo.erase(it);
+			notifySubscribersAboutStateChange();
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	for (auto adapter : mAdapters)
+	{
+		BT_DEBUG("Updating properties from adapters");
+
+		adapter->getAdapterProperty(BluetoothProperty::Type::BDADDR,[this, adapter](BluetoothError error, const BluetoothProperty &property) {
+			if (error != BLUETOOTH_ERROR_NONE)
+				return;
+
+			updateFromAdapterAddressForQueryAvailable(adapter, property);
+		});
+	}
+
 	notifySubscribersAdaptersChanged();
 }
 
@@ -501,11 +500,27 @@ void BluetoothManagerService::initializeProfiles()
 	}
 }
 
+void BluetoothManagerService::initializeProfiles(BluetoothManagerAdapter *adapter)
+{
+	for (auto profile : mProfiles)
+	{
+		profile->initialize(adapter->getAddress());
+	}
+}
+
 void BluetoothManagerService::resetProfiles()
 {
 	for (auto profile : mProfiles)
 	{
 		profile->reset();
+	}
+}
+
+void BluetoothManagerService::resetProfiles(const std::string &adapterAddress)
+{
+	for (auto profile : mProfiles)
+	{
+		profile->reset(adapterAddress);
 	}
 }
 
@@ -522,273 +537,84 @@ void BluetoothManagerService::assignDefaultAdapter()
 		return;
 	}
 
-	mDefaultAdapter->registerObserver(this);
-
-	initializeProfiles();
 
 	BT_DEBUG("Updating properties from default adapter");
 	mDefaultAdapter->getAdapterProperties([this](BluetoothError error, const BluetoothPropertiesList &properties) {
 		if (error != BLUETOOTH_ERROR_NONE)
 			return;
 
-		updateFromAdapterProperties(properties);
+		auto adapter = findAdapterInfo(mAddress);
+		if (adapter)
+			adapter->updateFromAdapterProperties(properties);
 	});
-
-	// Initialize pairable only for a NoInputNoOutput device
-	if (mPairingIOCapability == BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT)
-		setPairableState(true);
-
 }
 
+BluetoothManagerAdapter* BluetoothManagerService::findAdapterInfo(const std::string &address) const
+{
+	std::string convertedAddress = convertToLower(address);
+	auto adapterInfoIter = mAdaptersInfo.find(convertedAddress);
+	if (adapterInfoIter == mAdaptersInfo.end())
+	{
+		convertedAddress = convertToUpper(address);
+		adapterInfoIter = mAdaptersInfo.find(convertedAddress);
+		if (adapterInfoIter == mAdaptersInfo.end())
+			return 0;
+	}
+
+	return adapterInfoIter->second;
+}
+
+//TODO support multi adapter, remove this method once multi adapter is supported
+//Still used by a2dp profile
 BluetoothDevice* BluetoothManagerService::findDevice(const std::string &address) const
 {
-	std::string convertedAddress = convertToLower(address);
-	auto deviceIter = mDevices.find(convertedAddress);
-	if (deviceIter == mDevices.end())
-	{
-		convertedAddress = convertToUpper(address);
-		deviceIter = mDevices.find(convertedAddress);
-		if (deviceIter == mDevices.end())
-			return 0;
-	}
-
-	return deviceIter->second;
+	return findAdapterInfo(mAddress)->findDevice(address);
 }
 
-BluetoothDevice* BluetoothManagerService::findLeDevice(const std::string &address) const
+BluetoothDevice* BluetoothManagerService::findDevice(const std::string &adapterAddress, const std::string &address) const
 {
-	std::string convertedAddress = convertToLower(address);
-	auto deviceIter = mLeDevices.find(convertedAddress);
-	if (deviceIter == mLeDevices.end())
-	{
-		convertedAddress = convertToUpper(address);
-		deviceIter = mLeDevices.find(convertedAddress);
-		if (deviceIter == mLeDevices.end())
-			return 0;
-	}
-
-	return deviceIter->second;
+	return findAdapterInfo(adapterAddress)->findDevice(address);
 }
 
-BluetoothLinkKey BluetoothManagerService::findLinkKey(const std::string &address) const
+void BluetoothManagerService::updateFromAdapterAddressForQueryAvailable(BluetoothAdapter *adapter, const BluetoothProperty &property)
 {
-	std::string convertedAddress = convertToLower(address);
-	auto linkKeyIter = mLinkKeys.find(convertedAddress);
-	if (linkKeyIter == mLinkKeys.end())
-	{
-		convertedAddress = convertToUpper(address);
-		linkKeyIter = mLinkKeys.find(convertedAddress);
-		if (linkKeyIter == mLinkKeys.end())
-			return std::vector<int32_t>();
-	}
-
-	return linkKeyIter->second;
-}
-
-void BluetoothManagerService::adapterStateChanged(bool powered)
-{
-	BT_INFO("MANAGER_SERVICE", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
-
-	if (powered == mPowered)
+	if (property.getType() != BluetoothProperty::Type::BDADDR)
 		return;
 
-	BT_INFO("Manager", 0, "Bluetooth adapter state has changed to %s", powered ? "powered" : "not powered");
+	std::string address = convertToLower(property.getValue<std::string>());
+	BT_DEBUG("##### Bluetooth adapter address has changed to %s", address.c_str());
 
-	mPowered = powered;
-
-	if ( mPowered == true )
-	{
-		bt_ready_msg2kernel();
-		write_kernel_log("[bt_time] mPowered is true ");
-	}
-
-	notifySubscribersAboutStateChange();
-}
-
-void BluetoothManagerService::adapterHciTimeoutOccurred()
-{
-	BT_INFO("MANAGER_SERVICE", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
-	BT_CRITICAL( "Module Error", 0, "Failed to adapterHciTimeoutOccurred" );
-}
-
-void BluetoothManagerService::discoveryStateChanged(bool active)
-{
-	BT_INFO("MANAGER_SERVICE", 0, "Observer is called : [%s : %d] active : %d", __FUNCTION__, __LINE__, active);
-
-	if (mDiscovering == active)
+	auto adapterInfoIter = mAdaptersInfo.find(address);
+	if (adapterInfoIter != mAdaptersInfo.end())
 		return;
 
-	BT_DEBUG("Bluetooth adapter discovery state has changed to %s", active ? "active" : "not active");
+	BluetoothManagerAdapter *btmngrAdapter = new BluetoothManagerAdapter(this, address);
 
-	mDiscovering = active;
-
-	notifySubscribersAboutStateChange();
-}
-
-void BluetoothManagerService::adapterPropertiesChanged(BluetoothPropertiesList properties)
-{
-	BT_DEBUG("Bluetooth adapter properties have changed");
-	updateFromAdapterProperties(properties);
-}
-
-void BluetoothManagerService::updateFromAdapterProperties(const BluetoothPropertiesList &properties)
-{
-	bool changed = false;
-	bool pairableValue = false;
-	bool adaptersChanged = false;
-
-	for(auto prop : properties)
+	if (adapter == mDefaultAdapter)
 	{
-		switch (prop.getType())
-		{
-		case BluetoothProperty::Type::NAME:
-			mName = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("Bluetooth adapter name has changed to %s", mName.c_str());
-			break;
-		case BluetoothProperty::Type::ALIAS:
-			mName = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("Bluetooth adapter alias name has changed to %s", mName.c_str());
-			break;
-		case BluetoothProperty::Type::STACK_NAME:
-			mStackName = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("Bluetooth stack name has changed to %s", mStackName.c_str());
-			break;
-		case BluetoothProperty::Type::STACK_VERSION:
-			mStackVersion = prop.getValue<std::string>();
-			changed = true;
-			BT_DEBUG("Bluetooth stack version has changed to %s", mStackVersion.c_str());
-			break;
-		case BluetoothProperty::Type::FIRMWARE_VERSION:
-			mFirmwareVersion = prop.getValue<std::string>();
-			changed = true;
-
-			// Add firmware legnth limitation due to Instart menu size.
-			BT_DEBUG("Bluetooth module firmware full version has changed to %s", mFirmwareVersion.c_str());
-			if ( mFirmwareVersion.size() > 11 )
-				mFirmwareVersion = mFirmwareVersion.substr(0, 11);
-			BT_DEBUG("Bluetooth module firmware crop version has changed to %s", mFirmwareVersion.c_str());
-
-            if ( mFirmwareVersion == "")  // to Instart menu mFirmwareVersion : WEBDQMS-47082
-                mFirmwareVersion = "NULL";
-
-			break;
-		case BluetoothProperty::Type::BDADDR:
-			mAddress = convertToLower(prop.getValue<std::string>());
-			changed = true;
-			adaptersChanged = true;
-			BT_DEBUG("Bluetooth adapter address has changed to %s", mAddress.c_str());
-			break;
-		case BluetoothProperty::Type::DISCOVERY_TIMEOUT:
-			mDiscoveryTimeout = prop.getValue<uint32_t>();
-			changed = true;
-			BT_DEBUG("Bluetooth adapter discovery timeout has changed to %d", mDiscoveryTimeout);
-			break;
-		case BluetoothProperty::Type::DISCOVERABLE:
-			mDiscoverable = prop.getValue<bool>();
-			changed = true;
-			BT_DEBUG("Bluetooth adapter discoverable state has changed to %s", mDiscoverable ? "discoverable" : "not discoverable");
-			break;
-		case BluetoothProperty::Type::DISCOVERABLE_TIMEOUT:
-			mDiscoverableTimeout = prop.getValue<uint32_t>();
-			changed = true;
-			BT_DEBUG("Bluetooth adapter discoverable timeout has changed to %d", mDiscoverableTimeout);
-			break;
-		case BluetoothProperty::Type::UUIDS:
-			updateSupportedServiceClasses(prop.getValue<std::vector<std::string>>());
-			adaptersChanged = true;
-			break;
-		case BluetoothProperty::Type::CLASS_OF_DEVICE:
-			mClassOfDevice = prop.getValue<uint32_t>();
-			adaptersChanged = true;
-			BT_DEBUG("Bluetooth adapter class of device updated to %d", mClassOfDevice);
-			break;
-		case BluetoothProperty::Type::PAIRABLE:
-			pairableValue = prop.getValue<bool>();
-			BT_DEBUG("Bluetooth adapter pairable state has changed to %s", pairableValue ? "pairable" : "not pairable");
-			// If pairable has changed from true to false, it means PairableTimeout has
-			// reached, so cancel the incoming subscription on awaitPairingRequests
-			if (mPairState.isPairable() && pairableValue == false)
-				cancelIncomingPairingSubscription();
-			else if (BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT != mPairingIOCapability)
-				mPairState.setPairable(pairableValue);
-			break;
-		case BluetoothProperty::Type::PAIRABLE_TIMEOUT:
-			mPairState.setPairableTimeout(prop.getValue<uint32_t>());
-			changed = true;
-			BT_DEBUG("Bluetooth adapter pairable timeout has changed to %d", mPairState.getPairableTimeout());
-			break;
-		default:
-			break;
-		}
+		mAddress = address;
+		btmngrAdapter->setDefaultAdapter(true);
 	}
 
-	if (changed)
-		notifySubscribersAboutStateChange();
-	if (adaptersChanged)
-		notifySubscribersAdaptersChanged();
-}
+	btmngrAdapter->setAdapter(adapter);
 
-void BluetoothManagerService::updateSupportedServiceClasses(const std::vector<std::string> uuids)
-{
-	mSupportedServiceClasses.clear();
+	adapter->registerObserver(btmngrAdapter);
+	mAdaptersInfo.insert(std::pair<std::string, BluetoothManagerAdapter*>(address, btmngrAdapter));
 
-	for (auto uuid : uuids)
-	{
-		std::string luuid = convertToLower(uuid);
-		auto serviceClassInfo = allServiceClasses.find(luuid);
-		if (serviceClassInfo == allServiceClasses.end())
-		{
-			// We don't have an entry in our list so we don't support the profile at all
-			continue;
-		}
+	resetProfiles(address);
+	initializeProfiles(btmngrAdapter);
 
-		bool enabled = false;
-		for (auto enabledServiceClass : mEnabledServiceClasses)
-		{
-			if (serviceClassInfo->second.getMnemonic().find(enabledServiceClass) != std::string::npos)
-			{
-				enabled = true;
-				break;
-			}
-		}
+	if (mPairingIOCapability == BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT)
+		setPairableState(address, true);
 
-		if (!enabled)
-		{
-			BT_DEBUG("SIL supports profile %s but support for it isn't enabled", serviceClassInfo->second.getMnemonic().c_str());
-			continue;
-		}
+	adapter->getAdapterProperties([this, address](BluetoothError error, const BluetoothPropertiesList &properties) {
+		if (error != BLUETOOTH_ERROR_NONE)
+			return;
 
-		mSupportedServiceClasses.push_back(serviceClassInfo->second);
-	}
-
-	// Sanity check if all enabled profiles are supported by the SIL
-	for (auto serviceClass : mEnabledServiceClasses)
-	{
-		bool found = false;
-
-		for (auto adapterSupportedServiceClass : mSupportedServiceClasses)
-		{
-			if (adapterSupportedServiceClass.getMnemonic().find(serviceClass) != std::string::npos)
-			{
-				found = true;
-				break;
-			}
-		}
-
-		if (!found)
-		{
-			BT_WARNING(MSGID_ENABLED_PROFILE_NOT_SUPPORTED_BY_SIL, 0,
-					   "Profile %s should be supported but isn't by the loaded SIL module",
-					   serviceClass.c_str());
-
-			// We will let the service continue to work here but all profile
-			// specific actions will fail cause not supported by the SIL and
-			// will produce further warnings in the logs.
-		}
-	}
+		auto adapter = findAdapterInfo(address);
+		if (adapter)
+			adapter->updateFromAdapterProperties(properties);
+	});
 }
 
 void BluetoothManagerService::adapterKeepAliveStateChanged(bool enabled)
@@ -810,187 +636,13 @@ void BluetoothManagerService::adapterKeepAliveStateChanged(bool enabled)
 	LSUtils::postToSubscriptionPoint(&mGetKeepAliveStatusSubscriptions, responseObj);
 }
 
-void BluetoothManagerService::deviceFound(BluetoothPropertiesList properties)
-{
-	BluetoothDevice *device = new BluetoothDevice(properties);
-	BT_DEBUG("Found a new device");
-	mDevices.insert(std::pair<std::string, BluetoothDevice*>(device->getAddress(), device));
-
-	notifySubscribersFilteredDevicesChanged();
-	notifySubscribersDevicesChanged();
-}
-
-void BluetoothManagerService::deviceFound(const std::string &address, BluetoothPropertiesList properties)
-{
-    auto device = findDevice(address);
-    if (!device) {
-        BluetoothDevice *device = new BluetoothDevice(properties);
-		BT_DEBUG("Found a new device");
-		mDevices.insert(std::pair<std::string, BluetoothDevice*>(device->getAddress(), device));
-    }
-    else {
-        device->update(properties);
-    }
-	notifySubscribersFilteredDevicesChanged();
-	notifySubscribersDevicesChanged();
-}
-
-void BluetoothManagerService::devicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties)
-{
-	BT_DEBUG("Properties of device %s have changed", address.c_str());
-
-	auto device = findDevice(address);
-	if (device && device->update(properties))
-	{
-		notifySubscribersFilteredDevicesChanged();
-		notifySubscribersDevicesChanged();
-	}
-}
-
-void BluetoothManagerService::deviceRemoved(const std::string &address)
-{
-	BT_DEBUG("Device %s has disappeared", address.c_str());
-
-	auto deviceIter = mDevices.find(address);
-	if (deviceIter == mDevices.end())
-		return;
-
-	BluetoothDevice *device = deviceIter->second;
-	mDevices.erase(deviceIter);
-	delete device;
-	notifySubscribersFilteredDevicesChanged();
-	notifySubscribersDevicesChanged();
-}
-
-void BluetoothManagerService::leDeviceFound(const std::string &address, BluetoothPropertiesList properties)
-{
-	auto device = findLeDevice(address);
-	if (!device)
-	{
-		BluetoothDevice *device = new BluetoothDevice(properties);
-		BT_DEBUG("Found a new LE device");
-		mLeDevices.insert(std::pair<std::string, BluetoothDevice*>(device->getAddress(), device));
-	}
-	else
-	{
-		device->update(properties);
-	}
-
-	notifySubscriberLeDevicesChanged();
-}
-
-void BluetoothManagerService::leDevicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties)
-{
-	BT_DEBUG("Properties of device %s have changed", address.c_str());
-
-	auto device = findLeDevice(address);
-	if (device && device->update(properties))
-		notifySubscriberLeDevicesChanged();
-}
-
-void BluetoothManagerService::leDeviceRemoved(const std::string &address)
-{
-	BT_DEBUG("Device %s has disappeared", address.c_str());
-
-	auto deviceIter = mLeDevices.find(address);
-	if (deviceIter == mLeDevices.end())
-		return;
-
-	BluetoothDevice *device = deviceIter->second;
-	mLeDevices.erase(deviceIter);
-	delete device;
-
-	notifySubscriberLeDevicesChanged();
-}
-
-void BluetoothManagerService::leDeviceFoundByScanId(uint32_t scanId, BluetoothPropertiesList properties)
-{
-	BluetoothDevice *device = new BluetoothDevice(properties);
-	BT_DEBUG("Found a new LE device by %d", scanId);
-
-	auto devicesIter = mLeDevicesByScanId.find(scanId);
-	if (devicesIter == mLeDevicesByScanId.end())
-	{
-		std::unordered_map<std::string, BluetoothDevice*> devices;
-		devices.insert(std::pair<std::string, BluetoothDevice*>(device->getAddress(), device));
-
-		mLeDevicesByScanId.insert(std::pair<uint32_t, std::unordered_map<std::string, BluetoothDevice*>>(scanId, devices));
-	}
-	else
-		(devicesIter->second).insert(std::pair<std::string, BluetoothDevice*>(device->getAddress(), device));
-
-	notifySubscriberLeDevicesChangedbyScanId(scanId, device);
-}
-
-void BluetoothManagerService::leDevicePropertiesChangedByScanId(uint32_t scanId, const std::string &address, BluetoothPropertiesList properties)
-{
-	BT_DEBUG("Properties of device %s have changed by %d", address.c_str(), scanId);
-
-	auto devicesIter = mLeDevicesByScanId.find(scanId);
-	if (devicesIter == mLeDevicesByScanId.end())
-		return;
-
-	auto deviceIter = (devicesIter->second).find(address);
-	if (deviceIter == (devicesIter->second).end())
-		return;
-
-	BluetoothDevice *device = deviceIter->second;
-	if (device && device->update(properties))
-	{
-		notifySubscriberLeDevicesChangedbyScanId(scanId, device);
-	}
-}
-
-void BluetoothManagerService::leDeviceRemovedByScanId(uint32_t scanId, const std::string &address)
-{
-	BT_DEBUG("Device %s has disappeared in %d", address.c_str(), scanId);
-
-	auto devicesIter = mLeDevicesByScanId.find(scanId);
-	if (devicesIter == mLeDevicesByScanId.end())
-		return;
-
-	auto deviceIter = (devicesIter->second).find(address);
-	if (deviceIter == (devicesIter->second).end())
-		return;
-
-	BluetoothDevice *device = deviceIter->second;
-	(devicesIter->second).erase(deviceIter);
-	delete device;
-	notifySubscriberLeDevicesChangedbyScanId(scanId);
-}
-
-void BluetoothManagerService::deviceLinkKeyCreated(const std::string &address, BluetoothLinkKey LinkKey)
-{
-	BT_DEBUG("Link Key of device(%s) is created", address.c_str());
-
-	mLinkKeys.insert(std::pair<std::string, BluetoothLinkKey>(address, LinkKey));
-}
-
-void BluetoothManagerService::deviceLinkKeyDestroyed(const std::string &address, BluetoothLinkKey LinkKey)
-{
-	BT_DEBUG("Link Key of device(%s) is created", address.c_str());
-
-	auto linkKeyIter = mLinkKeys.find(address);
-	if (linkKeyIter == mLinkKeys.end())
-		return;
-
-	mLinkKeys.erase(linkKeyIter);
-}
-
 bool BluetoothManagerService::setState(LSMessage &msg)
 {
 	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
 
 	LS::Message request(&msg);
 	pbnjson::JValue requestObj;
-	BluetoothPropertiesList propertiesToChange;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_8(
                                     PROP(adapterAddress, string), PROP(name, string), PROP(powered, boolean),
@@ -1011,214 +663,68 @@ bool BluetoothManagerService::setState(LSMessage &msg)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	if (requestObj.hasKey("discoveryTimeout"))
-	{
-		int32_t discoveryTO = requestObj["discoveryTimeout"].asNumber<int32_t>();
+	BluetoothManagerAdapter* adapter = findAdapterInfo(adapterAddress);
 
-		if (discoveryTO < 0)
-		{
-				LSUtils::respondWithError(request, retrieveErrorText(BT_ERR_DISCOVERY_TO_NEG_VALUE) + std::to_string(discoveryTO), BT_ERR_DISCOVERY_TO_NEG_VALUE);
-				return true;
-		}
-		else
-		{
-			uint32_t discoveryTimeout = (uint32_t) discoveryTO;
-			if (discoveryTimeout != mDiscoveryTimeout)
-			{
-				propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::DISCOVERY_TIMEOUT, discoveryTimeout));
-			}
-		}
-	}
-
-	if (requestObj.hasKey("discoverableTimeout"))
-	{
-		int32_t discoverableTO = requestObj["discoverableTimeout"].asNumber<int32_t>();
-
-		if (discoverableTO < 0)
-		{
-			LSUtils::respondWithError(request, retrieveErrorText(BT_ERR_DISCOVERABLE_TO_NEG_VALUE) + std::to_string(discoverableTO), BT_ERR_DISCOVERABLE_TO_NEG_VALUE);
-			return true;
-		}
-		else
-		{
-			uint32_t discoverableTimeout = (uint32_t) discoverableTO;
-			if (discoverableTimeout != mDiscoverableTimeout)
-			{
-				propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::DISCOVERABLE_TIMEOUT, (uint32_t) discoverableTimeout));
-			}
-		}
-	}
-
-	if (requestObj.hasKey("pairableTimeout"))
-	{
-		int32_t pairableTO = requestObj["pairableTimeout"].asNumber<int32_t>();
-
-		if (pairableTO < 0)
-		{
-			LSUtils::respondWithError(request, retrieveErrorText(BT_ERR_PAIRABLE_TO_NEG_VALUE) + std::to_string(pairableTO), BT_ERR_PAIRABLE_TO_NEG_VALUE);
-			return true;
-		}
-		else
-		{
-			uint32_t pairableTimeout = (uint32_t) pairableTO;
-			if (pairableTimeout != mPairState.getPairableTimeout())
-			{
-				propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::PAIRABLE_TIMEOUT, (uint32_t) pairableTimeout));
-			}
-		}
-	}
-
-	if (requestObj.hasKey("powered"))
-	{
-		bool powered = requestObj["powered"].asBool();
-
-		if(powered != mPowered)
-		{
-			BluetoothError error;
-
-            BT_INFO("Manager", 0, "mDefaultAdapter = powered :%d", powered );
-
-			if (powered)
-				error = mDefaultAdapter->enable();
-			else
-				error = mDefaultAdapter->disable();
-
-			if (error != BLUETOOTH_ERROR_NONE)
-			{
-				LSUtils::respondWithError(request, BT_ERR_POWER_STATE_CHANGE_FAIL);
-				return true;
-			}
-		}
-	}
-
-	if (requestObj.hasKey("name"))
-	{
-		std::string name = requestObj["name"].asString();
-
-		if (name.compare(mName) != 0)
-		{
-			propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::ALIAS, name));
-		}
-	}
-
-	if (requestObj.hasKey("discoverable"))
-	{
-		bool discoverable = requestObj["discoverable"].asBool();
-
-		if (discoverable != mDiscoverable)
-		{
-			propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::DISCOVERABLE, discoverable));
-		}
-	}
-
-	if (requestObj.hasKey("pairable"))
-	{
-		bool pairable = requestObj["pairable"].asBool();
-
-		if (pairable != mPairState.isPairable())
-		{
-			propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::PAIRABLE, pairable));
-		}
-	}
-
-	// if we don't have any properties to set we can just respond to the caller
-	if (propertiesToChange.size() == 0)
-	{
-		pbnjson::JValue responseObj = pbnjson::Object();
-		responseObj.put("returnValue", true);
-		responseObj.put("adapterAddress", adapterAddress);
-
-		LSUtils::postToClient(request, responseObj);
-	}
-	else
-	{
-		BT_INFO("MANAGER_SERVICE", 0, "Service calls SIL API : setAdapterProperties");
-		mDefaultAdapter->setAdapterProperties(propertiesToChange, std::bind(&BluetoothManagerService::handleStatePropertiesSet, this, propertiesToChange, request, adapterAddress, _1));
-	}
-
-	return true;
+	return adapter->setState(request, requestObj);
 }
 
-bool BluetoothManagerService::setPairableState(bool value)
+BluetoothAdapter* BluetoothManagerService::getAdapter(const std::string &address)
+{
+	for(auto it = mAdaptersInfo.begin(); it != mAdaptersInfo.end(); it++)
+	{
+		std::string convertedAddress = convertToLower(address);
+		if (it->first.compare(convertedAddress) == 0)
+		{
+			return it->second->getAdapter();
+		}
+	}
+	return nullptr;
+}
+
+bool BluetoothManagerService::setPairableState(const std::string &adapterAddress, bool value)
 {
 	BT_DEBUG("Setting pairable to %d", value);
-	bool retVal=false;
+	bool retVal = false;
 
-	if (!mDefaultAdapter)
-	{
-		return false;
-	}
-
-	auto pairableCB = [this, value, &retVal](BluetoothError error) {
+	auto pairableCB = [this, value, &retVal, adapterAddress](BluetoothError error) {
 		if (error == BLUETOOTH_ERROR_NONE)
 		{
 			BT_DEBUG("Pairable value set in SIL with no errors");
-			mPairState.setPairable(value);
+			findAdapterInfo(adapterAddress)->getPairState().setPairable(true);
 			notifySubscribersAboutStateChange();
 			retVal = true;
 		}
 	};
-	mDefaultAdapter->setAdapterProperty(BluetoothProperty(BluetoothProperty::Type::PAIRABLE, value), pairableCB);
+
+	findAdapterInfo(adapterAddress)->getAdapter()->setAdapterProperty(BluetoothProperty(BluetoothProperty::Type::PAIRABLE, value), pairableCB);
 
 	return retVal;
-}
-
-void BluetoothManagerService::handleStatePropertiesSet(BluetoothPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error)
-{
-	BT_INFO("MANAGER_SERVICE", 0, "Return of handleStatePropertiesSet is %d", error);
-
-	if (BLUETOOTH_ERROR_NONE != error)
-	{
-		LSUtils::respondWithError(request, error);
-		return;
-	}
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	responseObj.put("returnValue", true);
-	responseObj.put("adapterAddress", adapterAddress);
-
-	LSUtils::postToClient(request, responseObj);
-}
-
-void BluetoothManagerService::handleDeviceStatePropertiesSet(BluetoothPropertiesList properties, BluetoothDevice *device, LS::Message &request, const std::string &adapterAddress, BluetoothError error)
-{
-	BT_INFO("MANAGER_SERVICE", 0, "Return of handleDeviceStatePropertiesSet is %d", error);
-
-	if (BLUETOOTH_ERROR_NONE != error)
-	{
-		LSUtils::respondWithError(request, error);
-		return;
-	}
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	responseObj.put("adapterAddress", adapterAddress);
-	if (device && device->update(properties))
-		responseObj.put("returnValue", true);
-	else
-		responseObj.put("returnValue", false);
-
-	LSUtils::postToClient(request, responseObj);
 }
 
 void BluetoothManagerService::appendCurrentStatus(pbnjson::JValue &object)
 {
 	pbnjson::JValue adaptersObj = pbnjson::Array();
 
-	pbnjson::JValue adapterObj = pbnjson::Object();
-	adapterObj.put("powered", mPowered);
-	adapterObj.put("name", mName);
-	adapterObj.put("adapterAddress", mAddress);
-	adapterObj.put("discovering", mDiscovering);
-	// pbnjson doesn't support unsigned int, so using int32_t for discoveryTimeout
-	// and discoverableTimeout
-	adapterObj.put("discoveryTimeout", (int32_t) mDiscoveryTimeout);
-	adapterObj.put("discoverable", mDiscoverable);
-	adapterObj.put("discoverableTimeout", (int32_t) mDiscoverableTimeout);
-	adapterObj.put("pairable", mPairState.isPairable());
-	adapterObj.put("pairableTimeout", (int32_t) mPairState.getPairableTimeout());
-	adapterObj.put("pairing", mPairState.isPairing());
+	for (auto adapterInfoIter : mAdaptersInfo)
+	{
+		auto adapterInfo = adapterInfoIter.second;
 
-	adaptersObj.append(adapterObj);
+		pbnjson::JValue adapterObj = pbnjson::Object();
+		adapterObj.put("powered", adapterInfo->getPowerState());
+		adapterObj.put("name", adapterInfo->getName());
+		adapterObj.put("adapterAddress", adapterInfo->getAddress());
+		adapterObj.put("discovering", adapterInfo->getDiscoveringState());
+		// pbnjson doesn't support unsigned int, so using int32_t for discoveryTimeout
+		// and discoverableTimeout
+		adapterObj.put("discoveryTimeout", (int32_t) adapterInfo->getDisoveryTimeout());
+		adapterObj.put("discoverable", adapterInfo->getDiscoverable());
+		adapterObj.put("discoverableTimeout", (int32_t) adapterInfo->getDiscoverableTimeout());
+		adapterObj.put("pairable", adapterInfo->getPairState().isPairable());
+		adapterObj.put("pairableTimeout", (int32_t) adapterInfo->getPairState().getPairableTimeout());
+		adapterObj.put("pairing", adapterInfo->getPairState().isPairing());
+
+		adaptersObj.append(adapterObj);
+	}
 
 	object.put("adapters", adaptersObj);
 }
@@ -1227,276 +733,27 @@ void BluetoothManagerService::appendAvailableStatus(pbnjson::JValue &object)
 {
 	pbnjson::JValue adaptersObj = pbnjson::Array();
 
-	if (mDefaultAdapter)
+	for (auto adapterInfoIter : mAdaptersInfo)
 	{
+		auto adapterInfo = adapterInfoIter.second;
 		pbnjson::JValue adapterObj = pbnjson::Object();
-		adapterObj.put("adapterAddress", mAddress);
-		adapterObj.put("default", true);
+
+		adapterObj.put("adapterAddress", adapterInfo->getAddress());
+		if (adapterInfo->getAddress() == mAddress)
+			adapterObj.put("default", true);
+		else
+			adapterObj.put("default", false);
 		// pbnjson doesn't support unsigned int, so using int32_t for classOfDevice
-		adapterObj.put("classOfDevice", (int32_t)mClassOfDevice);
-		adapterObj.put("stackName", mStackName);
-		adapterObj.put("stackVersion", mStackVersion);
-		adapterObj.put("firmwareVersion", mFirmwareVersion);
-		appendSupportedServiceClasses(adapterObj, mSupportedServiceClasses);
+		adapterObj.put("classOfDevice", (int32_t)adapterInfo->getClassOfDevice());
+		adapterObj.put("stackName", adapterInfo->getStackName());
+		adapterObj.put("stackVersion", adapterInfo->getStackVersion());
+		adapterObj.put("firmwareVersion", adapterInfo->getFirmwareVersion());
+		adapterInfo->appendSupportedServiceClasses(adapterObj, adapterInfo->getSupportedServiceClasses());
 
 		adaptersObj.append(adapterObj);
 	}
 
 	object.put("adapters", adaptersObj);
-}
-
-void BluetoothManagerService::appendFilteringDevices(std::string senderName, pbnjson::JValue &object)
-{
-	pbnjson::JValue devicesObj = pbnjson::Array();
-
-	for (auto deviceIter : mDevices)
-	{
-		auto device = deviceIter.second;
-		pbnjson::JValue deviceObj = pbnjson::Object();
-
-		auto filterClassOfDevices = mFilterClassOfDevices.find(senderName);
-		if (filterClassOfDevices != mFilterClassOfDevices.end())
-			if((((int32_t)(filterClassOfDevices->second) & (int32_t)(device->getClassOfDevice())) != (int32_t)(filterClassOfDevices->second)))
-				continue;
-
-		if(device->getTypeAsString() == "bredr")
-		{
-			if(mFilterUuids.size() > 0)
-			{
-				auto filterUuid = mFilterUuids.find(senderName);
-				if(filterUuid->second.c_str() != NULL)
-				{
-					auto uuidIter = std::find(device->getUuids().begin(), device->getUuids().end(), filterUuid->second);
-					if (filterUuid != mFilterUuids.end() && uuidIter != device->getUuids().end())
-						continue;
-				}
-			}
-		}
-
-		deviceObj.put("name", device->getName());
-		deviceObj.put("address", device->getAddress());
-		deviceObj.put("typeOfDevice", device->getTypeAsString());
-		deviceObj.put("classOfDevice", (int32_t) device->getClassOfDevice());
-		deviceObj.put("paired", device->getPaired());
-		deviceObj.put("pairing", device->getPairing());
-		deviceObj.put("trusted", device->getTrusted());
-		deviceObj.put("blocked", device->getBlocked());
-		deviceObj.put("rssi", device->getRssi());
-
-		if(device->getPaired())
-			deviceObj.put("adapterAddress", mAddress);
-		else
-			deviceObj.put("adapterAddress", "");
-
-		appendManufacturerData(deviceObj, device->getManufacturerData());
-		appendSupportedServiceClasses(deviceObj, device->getSupportedServiceClasses());
-		appendConnectedProfiles(deviceObj, device->getAddress());
-		devicesObj.append(deviceObj);
-	}
-
-	object.put("devices", devicesObj);
-}
-
-void BluetoothManagerService::appendLeDevices(pbnjson::JValue &object)
-{
-	pbnjson::JValue devicesObj = pbnjson::Array();
-
-	for (auto deviceIter : mLeDevices)
-	{
-		auto device = deviceIter.second;
-		pbnjson::JValue deviceObj = pbnjson::Object();
-
-		deviceObj.put("address", device->getAddress());
-		deviceObj.put("rssi", device->getRssi());
-
-		appendScanRecord(deviceObj, device->getScanRecord());
-		devicesObj.append(deviceObj);
-	}
-
-	object.put("devices", devicesObj);
-}
-
-void BluetoothManagerService::appendLeRecentDevice(pbnjson::JValue &object, BluetoothDevice *device)
-{
-
-	if(NULL == device)
-	{
-		BT_ERROR("MANAGER_SERVICE", 0, "appendLeDevicesByScanId  device field NULL\n");
-		return;
-	}
-
-	pbnjson::JValue deviceObj = pbnjson::Object();
-
-	deviceObj.put("name", device->getName());
-	deviceObj.put("address", device->getAddress());
-	deviceObj.put("typeOfDevice", device->getTypeAsString());
-	deviceObj.put("classOfDevice", (int32_t) device->getClassOfDevice());
-	deviceObj.put("paired", device->getPaired());
-	deviceObj.put("pairing", device->getPairing());
-	deviceObj.put("trusted", device->getTrusted());
-	deviceObj.put("blocked", device->getBlocked());
-	deviceObj.put("rssi", device->getRssi());
-
-	if(device->getPaired())
-		deviceObj.put("adapterAddress", mAddress);
-	else
-		deviceObj.put("adapterAddress", "");
-
-	appendManufacturerData(deviceObj, device->getManufacturerData());
-	appendScanRecord(deviceObj, device->getScanRecord());
-	appendSupportedServiceClasses(deviceObj, device->getSupportedServiceClasses());
-	appendConnectedProfiles(deviceObj, device->getAddress());
-
-	object.put("device", deviceObj);
-}
-
-void BluetoothManagerService::appendLeDevicesByScanId(pbnjson::JValue &object, uint32_t scanId)
-{
-	auto devicesIter = mLeDevicesByScanId.find(scanId);
-	if (devicesIter == mLeDevicesByScanId.end())
-		return;
-
-	std::unordered_map<std::string, BluetoothDevice*> devices = devicesIter->second;
-	pbnjson::JValue devicesObj = pbnjson::Array();
-
-	for (auto deviceIter : devices)
-	{
-		auto device = deviceIter.second;
-		pbnjson::JValue deviceObj = pbnjson::Object();
-
-        if(!device->getName().compare("LGE MR18")) {
-            BT_INFO("Manager", 0, "name: %s, address: %s, paired: %d, rssi: %d, blocked: %d\n", device->getName().c_str(), device->getAddress().c_str(), device->getPaired(), device->getRssi(), device->getBlocked());
-        }
-
-		deviceObj.put("name", device->getName());
-		deviceObj.put("address", device->getAddress());
-		deviceObj.put("typeOfDevice", device->getTypeAsString());
-		deviceObj.put("classOfDevice", (int32_t) device->getClassOfDevice());
-		deviceObj.put("paired", device->getPaired());
-		deviceObj.put("pairing", device->getPairing());
-		deviceObj.put("trusted", device->getTrusted());
-		deviceObj.put("blocked", device->getBlocked());
-		deviceObj.put("rssi", device->getRssi());
-
-		if(device->getPaired())
-			deviceObj.put("adapterAddress", mAddress);
-		else
-			deviceObj.put("adapterAddress", "");
-
-		appendManufacturerData(deviceObj, device->getManufacturerData());
-		appendScanRecord(deviceObj, device->getScanRecord());
-		appendSupportedServiceClasses(deviceObj, device->getSupportedServiceClasses());
-		appendConnectedProfiles(deviceObj, device->getAddress());
-		devicesObj.append(deviceObj);
-	}
-
-	object.put("devices", devicesObj);
-}
-
-void BluetoothManagerService::appendDevices(pbnjson::JValue &object)
-{
-	pbnjson::JValue devicesObj = pbnjson::Array();
-
-	for (auto deviceIter : mDevices)
-	{
-		auto device = deviceIter.second;
-		pbnjson::JValue deviceObj = pbnjson::Object();
-
-        if(!device->getName().compare("LGE MR18")) {
-            BT_INFO("Manager", 0, "name: %s, address: %s, paired: %d, rssi: %d, blocked: %d\n", device->getName().c_str(), device->getAddress().c_str(), device->getPaired(), device->getRssi(), device->getBlocked());
-        }
-
-		deviceObj.put("name", device->getName());
-		deviceObj.put("address", device->getAddress());
-		deviceObj.put("typeOfDevice", device->getTypeAsString());
-		deviceObj.put("classOfDevice", (int32_t) device->getClassOfDevice());
-		deviceObj.put("paired", device->getPaired());
-		deviceObj.put("pairing", device->getPairing());
-		deviceObj.put("trusted", device->getTrusted());
-		deviceObj.put("blocked", device->getBlocked());
-		deviceObj.put("rssi", device->getRssi());
-
-		if(device->getPaired())
-			deviceObj.put("adapterAddress", mAddress);
-		else
-			deviceObj.put("adapterAddress", "");
-
-		appendManufacturerData(deviceObj, device->getManufacturerData());
-		appendSupportedServiceClasses(deviceObj, device->getSupportedServiceClasses());
-		appendConnectedProfiles(deviceObj, device->getAddress());
-		appendScanRecord(deviceObj, device->getScanRecord());
-		devicesObj.append(deviceObj);
-	}
-
-	object.put("devices", devicesObj);
-}
-
-void BluetoothManagerService::appendScanRecord(pbnjson::JValue &object, const std::vector<uint8_t> scanRecord)
-{
-	pbnjson::JValue scanRecordArray = pbnjson::Array();
-
-	for (int i = 0; i < scanRecord.size(); i++)
-		scanRecordArray.append(scanRecord[i]);
-
-	object.put("scanRecord", scanRecordArray);
-}
-
-void BluetoothManagerService::appendManufacturerData(pbnjson::JValue &object, const std::vector<uint8_t> manufacturerData)
-{
-	pbnjson::JValue manufacturerDataObj = pbnjson::Object();
-	unsigned int i = 0;
-
-	if(manufacturerData.size() > 2)
-	{
-		pbnjson::JValue idArray = pbnjson::Array();
-		for (i = 0; i < 2; i++)
-			idArray.append(manufacturerData[i]);
-
-		pbnjson::JValue dataArray = pbnjson::Array();
-		for (i = 2; i < manufacturerData.size(); i++)
-			dataArray.append(manufacturerData[i]);
-
-		manufacturerDataObj.put("companyId", idArray);
-		manufacturerDataObj.put("data", dataArray);
-	}
-
-	object.put("manufacturerData", manufacturerDataObj);
-}
-
-void BluetoothManagerService::appendSupportedServiceClasses(pbnjson::JValue &object, const std::vector<BluetoothServiceClassInfo> &supportedServiceClasses)
-{
-	pbnjson::JValue supportedProfilesObj = pbnjson::Array();
-
-	for (auto profile : supportedServiceClasses)
-	{
-		pbnjson::JValue profileObj = pbnjson::Object();
-
-		profileObj.put("mnemonic", profile.getMnemonic());
-
-		// Only set the category if we have one. If we don't have one then the
-		// profile doesn't have any support in here and we don't need to expose
-		// a non existing category name
-		std::string category = profile.getMethodCategory();
-		if (!category.empty())
-			profileObj.put("category", profile.getMethodCategory());
-
-		supportedProfilesObj.append(profileObj);
-	}
-
-	object.put("serviceClasses", supportedProfilesObj);
-}
-
-void BluetoothManagerService::appendConnectedProfiles(pbnjson::JValue &object, const std::string deviceAddress)
-{
-	pbnjson::JValue connectedProfilesObj = pbnjson::Array();
-
-	for (auto profile : mProfiles)
-	{
-		if (profile->isDeviceConnected(deviceAddress))
-			connectedProfilesObj.append(convertToLower(profile->getName()));
-	}
-
-	object.put("connectedProfiles", connectedProfilesObj);
 }
 
 bool BluetoothManagerService::getStatus(LSMessage &message)
@@ -1507,12 +764,6 @@ bool BluetoothManagerService::getStatus(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 	bool subscribed = false;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, SCHEMA_1(PROP(subscribe, boolean)), &parseError))
 	{
@@ -1587,18 +838,6 @@ bool BluetoothManagerService::startFilteringDiscovery(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
-	if (!mPowered)
-	{
-		LSUtils::respondWithError(request, BT_ERR_START_DISC_ADAPTER_OFF_ERR);
-		return true;
-	}
-
 	const std::string schema =  STRICT_SCHEMA(PROPS_2(PROP(typeOfDevice, string), PROP(accessCode, string)));
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -1620,6 +859,12 @@ bool BluetoothManagerService::startFilteringDiscovery(LSMessage &message)
 
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
+
+	if (!findAdapterInfo(adapterAddress)->getPowerState())
+	{
+		LSUtils::respondWithError(request, BT_ERR_START_DISC_ADAPTER_OFF_ERR);
+		return true;
+	}
 
 	const char* senderName = LSMessageGetApplicationID(&message);
 	if(senderName == NULL)
@@ -1659,8 +904,8 @@ bool BluetoothManagerService::startFilteringDiscovery(LSMessage &message)
 	BluetoothError error = BLUETOOTH_ERROR_NONE;
 	// Outgoing pairing performs in two steps, cancelDiscovery() and pair().
 	// startDiscovery request in the middle of pairing must be ignored.
-	if (!mPairState.isPairing())
-		error = mDefaultAdapter->startDiscovery(transportType, inquiryAccessCode);
+	if (!findAdapterInfo(adapterAddress)->getPairState().isPairing())
+		error = findAdapterInfo(adapterAddress)->getAdapter()->startDiscovery(transportType, inquiryAccessCode);
 	else
 	{
 		LSUtils::respondWithError(request, BT_ERR_PAIRING_IN_PROG);
@@ -1690,18 +935,6 @@ bool BluetoothManagerService::startDiscovery(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
-	if (!mPowered)
-	{
-		LSUtils::respondWithError(request, BT_ERR_START_DISC_ADAPTER_OFF_ERR);
-		return true;
-	}
-
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, SCHEMA_1(PROP(adapterAddress, string)), &parseError))
 	{
 		if (parseError == JSON_PARSE_SCHEMA_ERROR)
@@ -1716,25 +949,9 @@ bool BluetoothManagerService::startDiscovery(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	BluetoothError error = BLUETOOTH_ERROR_NONE;
-	// Outgoing pairing performs in two steps, cancelDiscovery() and pair().
-	// startDiscovery request in the middle of pairing must be ignored.
-	if (!mPairState.isPairing())
-		error = mDefaultAdapter->startDiscovery();
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	if (error != BLUETOOTH_ERROR_NONE)
-	{
-		LSUtils::respondWithError(request, BT_ERR_START_DISC_FAIL);
-		return true;
-	}
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	responseObj.put("returnValue", true);
-	responseObj.put("adapterAddress", adapterAddress);
-
-	LSUtils::postToClient(request, responseObj);
-
-	return true;
+	return adapter->startDiscovery(request, requestObj);
 }
 
 bool BluetoothManagerService::cancelDiscovery(LSMessage &message)
@@ -1745,18 +962,6 @@ bool BluetoothManagerService::cancelDiscovery(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
-	if (!mPowered)
-	{
-		LSUtils::respondWithError(request, BT_ERR_DISC_STOP_ADAPTER_OFF_ERR);
-		return true;
-	}
-
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, SCHEMA_1(PROP(adapterAddress, string)), &parseError))
 	{
 		if (parseError == JSON_PARSE_SCHEMA_ERROR)
@@ -1771,42 +976,9 @@ bool BluetoothManagerService::cancelDiscovery(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	LSMessage *requestMessage = request.get();
-	LSMessageRef(requestMessage);
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	mDefaultAdapter->cancelDiscovery([requestMessage, this, adapterAddress](BluetoothError error) {
-
-		if (error != BLUETOOTH_ERROR_NONE)
-		{
-			LSUtils::respondWithError(requestMessage, BT_ERR_STOP_DISC_FAIL);
-		}
-		else
-		{
-			pbnjson::JValue responseObj = pbnjson::Object();
-			responseObj.put("returnValue", true);
-			responseObj.put("adapterAddress", adapterAddress);
-			LSUtils::postToClient(requestMessage, responseObj);
-		}
-
-		const char* senderName = LSMessageGetApplicationID(requestMessage);
-		if( senderName == NULL )
-		{
-			senderName = LSMessageGetSenderServiceName(requestMessage);
-		}
-
-		if(senderName != NULL)
-		{
-			auto watchIter = mGetDevicesWatches.find(senderName);
-			if (watchIter == mGetDevicesWatches.end())
-				return;
-
-			LSUtils::ClientWatch *watch = watchIter->second;
-			mGetDevicesWatches.erase(watchIter);
-			delete watch;
-		}
-	});
-
-	return true;
+	return adapter->cancelDiscovery(request);
 }
 
 bool BluetoothManagerService::getLinkKey(LSMessage &message)
@@ -1816,12 +988,6 @@ bool BluetoothManagerService::getLinkKey(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string)) REQUIRED_1(address));
 
@@ -1839,29 +1005,9 @@ bool BluetoothManagerService::getLinkKey(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	auto device = findDevice(address);
-	if (!device)
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
-	}
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	auto linkKey = findLinkKey(address);
-
-	pbnjson::JValue linkKeyArray = pbnjson::Array();
-	for (size_t i=0; i < linkKey.size(); i++)
-		linkKeyArray.append((int32_t) linkKey[i]);
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	responseObj.put("returnValue", true);
-	responseObj.put("adapterAddress", adapterAddress);
-	responseObj.put("address", address);
-	responseObj.put("linkKey", linkKeyArray);
-
-	LSUtils::postToClient(request, responseObj);
-
-	return true;
+	return adapter->getLinkKey(request, requestObj);
 }
 
 bool BluetoothManagerService::startSniff(LSMessage &message)
@@ -1871,12 +1017,6 @@ bool BluetoothManagerService::startSniff(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_6(PROP(address, string), PROP(adapterAddress, string),
 													PROP(minInterval, integer), PROP(maxInterval, integer),
@@ -1898,7 +1038,7 @@ bool BluetoothManagerService::startSniff(LSMessage &message)
 		return true;
 
 	std::string address = requestObj["address"].asString();
-	auto device = findDevice(address);
+	auto device = findAdapterInfo(adapterAddress)->findDevice(address);
 	if (!device)
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
@@ -1922,7 +1062,7 @@ bool BluetoothManagerService::startSniff(LSMessage &message)
 	BluetoothError error;
 	pbnjson::JValue responseObj = pbnjson::Object();
 
-	error = mDefaultAdapter->startSniff(address, minInterval, maxInterval, attempt, timeout);
+	error = findAdapterInfo(adapterAddress)->getAdapter()->startSniff(address, minInterval, maxInterval, attempt, timeout);
 	if (BLUETOOTH_ERROR_NONE == error)
 	{
 		responseObj.put("adapterAddress", adapterAddress);
@@ -1946,12 +1086,6 @@ bool BluetoothManagerService::stopSniff(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string))
 													REQUIRED_1(address));
 
@@ -1970,7 +1104,7 @@ bool BluetoothManagerService::stopSniff(LSMessage &message)
 		return true;
 
 	std::string address = requestObj["address"].asString();
-	auto device = findDevice(address);
+	auto device = findAdapterInfo(adapterAddress)->findDevice(address);
 	if (!device)
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
@@ -1980,7 +1114,7 @@ bool BluetoothManagerService::stopSniff(LSMessage &message)
 	BluetoothError error;
 	pbnjson::JValue responseObj = pbnjson::Object();
 
-	error = mDefaultAdapter->stopSniff(address);
+	error = findAdapterInfo(adapterAddress)->getAdapter()->stopSniff(address);
 	if (BLUETOOTH_ERROR_NONE == error)
 	{
 		responseObj.put("adapterAddress", adapterAddress);
@@ -2003,13 +1137,6 @@ bool BluetoothManagerService::getFilteringDeviceStatus(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-	bool subscribed = false;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_4(PROP(subscribe, boolean), PROP(adapterAddress, string), PROP(classOfDevice, integer), PROP(uuid, string)));
 
@@ -2023,89 +1150,23 @@ bool BluetoothManagerService::getFilteringDeviceStatus(LSMessage &message)
 		return true;
 	}
 
-	std::string appName = getMessageOwner(request.get());
-    if (appName.compare("") == 0)
-    {
-            LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING, true);
-            return true;
-    }
-
 	std::string adapterAddress;
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	const char* senderName = LSMessageGetApplicationID(&message);
-	if(senderName == NULL)
-	{
-		senderName = LSMessageGetSenderServiceName(&message);
-		if(senderName == NULL)
-		{
-			LSUtils::respondWithError(request, BT_ERR_START_DISC_FAIL);
-			return true;
-		}
-	}
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	if (requestObj.hasKey("classOfDevice"))
-	{
-		if(mFilterClassOfDevices.find(appName) != mFilterClassOfDevices.end())
-			mFilterClassOfDevices[appName] = requestObj["classOfDevice"].asNumber<int32_t>();
-		else
-			mFilterClassOfDevices.insert(std::pair<std::string, int32_t>(appName, requestObj["classOfDevice"].asNumber<int32_t>()));
-	}
-	else
-	{
-		if(mFilterClassOfDevices.find(appName) != mFilterClassOfDevices.end())
-			mFilterClassOfDevices[appName] = 0;
-		else
-			mFilterClassOfDevices.insert(std::pair<std::string, int32_t>(appName, 0));
-	}
+	return adapter->getFilteringDeviceStatus(request, requestObj);
 
-	if (requestObj.hasKey("uuid"))
-	{
-		if(mFilterUuids.find(appName) != mFilterUuids.end())
-			mFilterUuids[appName] = requestObj["uuid"].asString();
-		else
-			mFilterUuids.insert(std::pair<std::string, std::string>(appName, requestObj["uuid"].asString()));
-	}
-	else
-	{
-		if(mFilterUuids.find(appName) != mFilterUuids.end())
-			mFilterUuids[appName] = std::string();
-		else
-			mFilterUuids.insert(std::pair<std::string, std::string>(appName, std::string()));
-	}
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	if (request.isSubscription())
-	{
-		LSUtils::ClientWatch *watch = new LSUtils::ClientWatch(get(), &message, nullptr);
-		if(mGetDevicesWatches.find(senderName) != mGetDevicesWatches.end())
-			mGetDevicesWatches[senderName] = watch;
-		else
-			mGetDevicesWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(senderName, watch));
-
-		subscribed = true;
-	}
-
-	appendFilteringDevices(senderName, responseObj);
-
-	responseObj.put("returnValue", true);
-	responseObj.put("subscribed", subscribed);
-	responseObj.put("adapterAddress", adapterAddress);
-
-	LSUtils::postToClient(request, responseObj);
-
-	return true;
 }
 
-bool BluetoothManagerService::getDeviceStatus(LSMessage &message)
+bool BluetoothManagerService::getConnectedDevices(LSMessage &message)
 {
 	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
 
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
-        int parseError = 0;
-	bool subscribed = false;
+	int parseError = 0;
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_3(PROP(subscribe, boolean), PROP(adapterAddress, string), PROP(classOfDevice, integer)));
 
@@ -2119,15 +1180,32 @@ bool BluetoothManagerService::getDeviceStatus(LSMessage &message)
 		return true;
 	}
 
-	if (request.isSubscription())
-	{
-		mGetDevicesSubscriptions.subscribe(request);
-		subscribed = true;
-	}
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
-	if (!mDefaultAdapter)
+	auto adapter = findAdapterInfo(adapterAddress);
+
+	return adapter->getConnectedDevices(request, requestObj);
+}
+
+bool BluetoothManagerService::getDeviceStatus(LSMessage &message)
+{
+	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema =  STRICT_SCHEMA(PROPS_3(PROP(subscribe, boolean), PROP(adapterAddress, string), PROP(classOfDevice, integer)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		if (parseError == JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		else
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
 		return true;
 	}
 
@@ -2135,17 +1213,9 @@ bool BluetoothManagerService::getDeviceStatus(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	pbnjson::JValue responseObj = pbnjson::Object();
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	appendDevices(responseObj);
-
-	responseObj.put("returnValue", true);
-	responseObj.put("subscribed", subscribed);
-	responseObj.put("adapterAddress", adapterAddress);
-
-	LSUtils::postToClient(request, responseObj);
-
-	return true;
+	return adapter->getDeviceStatus(request, requestObj);
 }
 
 bool BluetoothManagerService::setDeviceState(LSMessage &msg)
@@ -2154,14 +1224,7 @@ bool BluetoothManagerService::setDeviceState(LSMessage &msg)
 
 	LS::Message request(&msg);
 	pbnjson::JValue requestObj;
-	BluetoothPropertiesList propertiesToChange;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_4(
                                     PROP(address, string), PROP(trusted, boolean), PROP(blocked, boolean), PROP(adapterAddress, string))
@@ -2185,53 +1248,19 @@ bool BluetoothManagerService::setDeviceState(LSMessage &msg)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	auto device = findDevice(address);
-	if (!device)
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
-	}
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	if (requestObj.hasKey("trusted"))
-	{
-		bool trusted = requestObj["trusted"].asBool();
-		trusted = requestObj["trusted"].asBool();
-
-		if (trusted != device->getTrusted())
-			propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::TRUSTED, trusted));
-	}
-
-	if (requestObj.hasKey("blocked"))
-	{
-		bool blocked = requestObj["blocked"].asBool();
-
-		if (blocked != device->getBlocked())
-			propertiesToChange.push_back(BluetoothProperty(BluetoothProperty::Type::BLOCKED, blocked));
-	}
-
-	if (propertiesToChange.size() == 0)
-		LSUtils::respondWithError(request, BT_ERR_NO_PROP_CHANGE);
-	else
-		mDefaultAdapter->setDeviceProperties(address, propertiesToChange, std::bind(&BluetoothManagerService::handleDeviceStatePropertiesSet, this, propertiesToChange, device, request, adapterAddress, _1));
-
-	return true;
+	return adapter->setDeviceState(request, requestObj);
 }
 
 bool BluetoothManagerService::pair(LSMessage &message)
 {
-	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
-
-	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
+	LS::Message request(&message);
 
+	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string),
                                               PROP_WITH_VAL_1(subscribe, boolean, true), PROP(adapterAddress,string))
                                               REQUIRED_2(address,subscribe));
@@ -2253,53 +1282,13 @@ bool BluetoothManagerService::pair(LSMessage &message)
 		return true;
 	}
 
-	if(mOutgoingPairingWatch)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ALLOW_ONE_SUBSCRIBE);
-		return true;
-	}
-
-	if (mPairState.isPairing())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PAIRING_IN_PROG);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	BluetoothDevice *device = findDevice(address);
-	if (!device)
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
-	}
-
-	if (device->getPaired())
-	{
-		LSUtils::respondWithError(request, BLUETOOTH_ERROR_DEVICE_ALREADY_PAIRED);
-		return true;
-	}
-
-	mOutgoingPairingWatch = new LSUtils::ClientWatch(get(), &message, [this]() {
-		notifyPairingListenerDropped(false);
-	});
-
-	mPairState.markAsOutgoing();
-
-	// We have to send a response to the client immediately
-	pbnjson::JValue responseObj = pbnjson::Object();
-	responseObj.put("adapterAddress", adapterAddress);
-	responseObj.put("subscribed", true);
-	responseObj.put("returnValue", true);
-	LSUtils::postToClient(request, responseObj);
-
-	startPairing(device);
-
-	return true;
+	return adapter->pair(request, requestObj);
 }
 
 bool BluetoothManagerService::supplyPasskey(LSMessage &message)
@@ -2309,13 +1298,6 @@ bool BluetoothManagerService::supplyPasskey(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string), PROP(passkey, integer), PROP(adapterAddress, string))
                                               REQUIRED_2(address, passkey));
@@ -2341,27 +1323,9 @@ bool BluetoothManagerService::supplyPasskey(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	uint32_t passkey = requestObj["passkey"].asNumber<int32_t>();
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	BluetoothError error = mDefaultAdapter->supplyPairingSecret(address, passkey);
-	pbnjson::JValue responseObj = pbnjson::Object();
-	if (BLUETOOTH_ERROR_NONE == error)
-	{
-		responseObj.put("adapterAddress", adapterAddress);
-		responseObj.put("returnValue", true);
-	}
-	else
-	{
-		appendErrorResponse(responseObj, error);
-	}
-
-	LSUtils::postToClient(request, responseObj);
-
-	if (mPairState.isIncoming())
-		stopPairing();
-
-	return true;
+	return adapter->supplyPasskey(request, requestObj);
 }
 
 bool BluetoothManagerService::supplyPinCode(LSMessage &message)
@@ -2371,13 +1335,6 @@ bool BluetoothManagerService::supplyPinCode(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string), PROP(pin, string), PROP(adapterAddress, string))
                                              REQUIRED_2(address, pin));
@@ -2403,27 +1360,9 @@ bool BluetoothManagerService::supplyPinCode(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	std::string pin = requestObj["pin"].asString();
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	BluetoothError error = mDefaultAdapter->supplyPairingSecret(address, pin);
-	pbnjson::JValue responseObj = pbnjson::Object();
-	if (BLUETOOTH_ERROR_NONE == error)
-	{
-		responseObj.put("adapterAddress", adapterAddress);
-		responseObj.put("returnValue", true);
-	}
-	else
-	{
-		appendErrorResponse(responseObj, error);
-	}
-
-	LSUtils::postToClient(request, responseObj);
-
-	if (mPairState.isIncoming())
-		stopPairing();
-
-	return true;
+	return adapter->supplyPinCode(request, requestObj);
 }
 
 bool BluetoothManagerService::supplyPasskeyConfirmation(LSMessage &message)
@@ -2433,12 +1372,6 @@ bool BluetoothManagerService::supplyPasskeyConfirmation(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string), PROP(accept, boolean), PROP(adapterAddress, string))
                                               REQUIRED_2(address, accept));
@@ -2460,42 +1393,13 @@ bool BluetoothManagerService::supplyPasskeyConfirmation(LSMessage &message)
 		return true;
 	}
 
-	if (!mPairState.isPairing())
-	{
-		LSUtils::respondWithError(request, BT_ERR_NO_PAIRING);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	bool accept = requestObj["accept"].asBool();
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	BluetoothError error = mDefaultAdapter->supplyPairingConfirmation(address, accept);
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	if (BLUETOOTH_ERROR_NONE == error)
-	{
-		responseObj.put("adapterAddress", adapterAddress);
-		responseObj.put("returnValue", true);
-	}
-	else
-	{
-		appendErrorResponse(responseObj, error);
-	}
-
-	LSUtils::postToClient(request, responseObj);
-
-	// For an incoming pairing request we're done at this point. Either
-	// the user accepted the pairing request or not but we don't have to
-	// track that anymore. Service users will get notified about a newly
-	// paired device once its state switched to paired.
-	if (mPairState.isIncoming())
-		stopPairing();
-
-	return true;
+	return adapter->supplyPasskeyConfirmation(request, requestObj);
 }
 
 bool BluetoothManagerService::cancelPairing(LSMessage &message)
@@ -2506,12 +1410,6 @@ bool BluetoothManagerService::cancelPairing(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string)) REQUIRED_1(address));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
@@ -2528,85 +1426,13 @@ bool BluetoothManagerService::cancelPairing(LSMessage &message)
 		return true;
 	}
 
-	if (!mPairState.isPairing())
-	{
-		LSUtils::respondWithError(request, BT_ERR_NO_PAIRING);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	auto device = findDevice(address);
-	if (!device)
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
-	}
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	if (mPairState.getDevice()->getAddress() != address)
-	{
-		LSUtils::respondWithError(request, BT_ERR_NO_PAIRING_FOR_REQUESTED_ADDRESS);
-		return true;
-	}
-
-	LSMessage *requestMessage = request.get();
-	LSMessageRef(requestMessage);
-
-	auto cancelPairingCallback = [this, requestMessage, device, adapterAddress](BluetoothError error) {
-		pbnjson::JValue responseObj = pbnjson::Object();
-		responseObj.put("adapterAddress", adapterAddress);
-		responseObj.put("returnValue", true);
-
-		LSUtils::postToClient(requestMessage, responseObj);
-		LSMessageUnref(requestMessage);
-
-		pbnjson::JValue subscriptionResponseObj = pbnjson::Object();
-
-		if (BLUETOOTH_ERROR_NONE == error)
-		{
-			BT_DEBUG("Cancel pairing success");
-			// When an incoming pairing request is canceled we don't drop the
-			// subscription
-			subscriptionResponseObj.put("adapterAddress", adapterAddress);
-			subscriptionResponseObj.put("subscribed", mPairState.isIncoming());
-			subscriptionResponseObj.put("returnValue", false);
-			subscriptionResponseObj.put("request", "endPairing");
-			subscriptionResponseObj.put("errorCode", (int32_t)BT_ERR_PAIRING_CANCELED);
-			subscriptionResponseObj.put("errorText", retrieveErrorText(BT_ERR_PAIRING_CANCELED));
-		}
-		else
-		{
-			BT_DEBUG("Cancel pairing failed");
-			subscriptionResponseObj.put("adapterAddress", adapterAddress);
-			subscriptionResponseObj.put("subscribed", true);
-			subscriptionResponseObj.put("returnValue", true);
-			subscriptionResponseObj.put("request", "continuePairing");
-		}
-
-		if (mPairState.isOutgoing())
-		{
-			BT_DEBUG("Canceling outgoing pairing");
-			if (mOutgoingPairingWatch)
-				LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), subscriptionResponseObj);
-		}
-		else if (mPairState.isIncoming())
-		{
-			BT_DEBUG("Canceling incoming pairing");
-			if(mIncomingPairingWatch)
-				LSUtils::postToClient(mIncomingPairingWatch->getMessage(), subscriptionResponseObj);
-		}
-
-		if (BLUETOOTH_ERROR_NONE == error)
-			stopPairing();
-	};
-
-	BT_DEBUG("Initiating cancel pair call to the SIL for address %s", address.c_str());
-	mDefaultAdapter->cancelPairing(address, cancelPairingCallback);
-
-	return true;
+	return adapter->cancelPairing(request, requestObj);
 }
 
 bool BluetoothManagerService::unpair(LSMessage &message)
@@ -2617,12 +1443,6 @@ bool BluetoothManagerService::unpair(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(adapterAddress, string)) REQUIRED_1(address));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
@@ -2643,36 +1463,9 @@ bool BluetoothManagerService::unpair(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	std::string address = requestObj["address"].asString();
-	auto device = findDevice(address);
-	if (!device)
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
-	}
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	LSMessage *requestMessage = request.get();
-	LSMessageRef(requestMessage);
-
-	auto unpairCallback = [requestMessage, this, adapterAddress](BluetoothError error) {
-		if (error != BLUETOOTH_ERROR_NONE)
-		{
-			LSUtils::respondWithError(requestMessage, BT_ERR_UNPAIR_FAIL);
-			return;
-		}
-
-		pbnjson::JValue responseObj = pbnjson::Object();
-		responseObj.put("returnValue", true);
-		responseObj.put("adapterAddress", adapterAddress);
-
-		LSUtils::postToClient(requestMessage, responseObj);
-
-		LSMessageUnref(requestMessage);
-	};
-
-	mDefaultAdapter->unpair(address, unpairCallback);
-
-	return true;
+	return adapter->unpair(request, requestObj);
 }
 
 bool BluetoothManagerService::awaitPairingRequests(LSMessage &message)
@@ -2682,12 +1475,6 @@ bool BluetoothManagerService::awaitPairingRequests(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP_WITH_VAL_1(subscribe, boolean, true), PROP(adapterAddress, string)) REQUIRED_1(subscribe));
 
@@ -2705,40 +1492,12 @@ bool BluetoothManagerService::awaitPairingRequests(LSMessage &message)
 		return true;
 	}
 
-	if(mIncomingPairingWatch)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ALLOW_ONE_SUBSCRIBE);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	mIncomingPairingWatch = new LSUtils::ClientWatch(get(), &message, [this]() {
-		notifyPairingListenerDropped(true);
-	});
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	if (setPairableState(true))
-	{
-		responseObj.put("adapterAddress", adapterAddress);
-		responseObj.put("subscribed", true);
-		responseObj.put("returnValue", true);
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-	else
-	{
-		responseObj.put("adapterAddress", adapterAddress);
-		responseObj.put("subscribed", false);
-		responseObj.put("returnValue", false);
-		responseObj.put("errorCode", (int32_t)BT_ERR_PAIRABLE_FAIL);
-		responseObj.put("errorText", retrieveErrorText(BT_ERR_PAIRABLE_FAIL));
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-
-	return true;
+	auto adapter = findAdapterInfo(adapterAddress);
+	return adapter->awaitPairingRequests(request, requestObj);
 }
 
 bool BluetoothManagerService::setWoBle(LSMessage &message)
@@ -2748,12 +1507,6 @@ bool BluetoothManagerService::setWoBle(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(woBleEnabled, boolean), PROP(adapterAddress, string) , PROP(suspend, boolean)) REQUIRED_2(woBleEnabled, suspend));
 
@@ -2786,9 +1539,9 @@ bool BluetoothManagerService::setWoBle(LSMessage &message)
 	{
 		woBleEnabled = requestObj["woBleEnabled"].asBool();
 		if (woBleEnabled)
-			error = mDefaultAdapter->enableWoBle(suspend);
+			error = findAdapterInfo(adapterAddress)->getAdapter()->enableWoBle(suspend);
 		else
-			error = mDefaultAdapter->disableWoBle(suspend);
+			error = findAdapterInfo(adapterAddress)->getAdapter()->disableWoBle(suspend);
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -2816,12 +1569,6 @@ bool BluetoothManagerService::setWoBleTriggerDevices(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(ARRAY(triggerDevices, string), PROP(adapterAddress, string)) REQUIRED_1(triggerDevices));
 
@@ -2855,7 +1602,7 @@ bool BluetoothManagerService::setWoBleTriggerDevices(LSMessage &message)
 			triggerDevices.push_back(element.asString());
 		}
 
-		error = mDefaultAdapter->setWoBleTriggerDevices(triggerDevices);
+		error = findAdapterInfo(adapterAddress)->getAdapter()->setWoBleTriggerDevices(triggerDevices);
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -2884,12 +1631,6 @@ bool BluetoothManagerService::getWoBleStatus(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_1(PROP(adapterAddress, string)));
 
@@ -2932,12 +1673,6 @@ bool BluetoothManagerService::sendHciCommand(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(ogf, integer), PROP(ocf, integer), ARRAY(parameters, integer)) REQUIRED_3(ogf, ocf, parameters));
 
@@ -3004,7 +1739,7 @@ bool BluetoothManagerService::sendHciCommand(LSMessage &message)
 		LSMessageUnref(requestMessage);
 
 	};
-	mDefaultAdapter->sendHciCommand(ogf, ocf, parameters, sendHciCommandCallback);
+	findAdapterInfo(adapterAddress)->getAdapter()->sendHciCommand(ogf, ocf, parameters, sendHciCommandCallback);
 	return true;
 }
 
@@ -3015,12 +1750,6 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_7(
 									PROP(stackTraceEnabled, boolean), PROP(snoopTraceEnabled, boolean),
@@ -3047,7 +1776,7 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	if (requestObj.hasKey("stackTraceLevel"))
 	{
 		int stackTraceLevel = requestObj["stackTraceLevel"].asNumber<int32_t>();
-		error = mDefaultAdapter->setStackTraceLevel(stackTraceLevel);
+		error = findAdapterInfo(adapterAddress)->getAdapter()->setStackTraceLevel(stackTraceLevel);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3059,7 +1788,7 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	if (requestObj.hasKey("stackLogPath"))
 	{
 		std::string stackLogPath = requestObj["stackLogPath"].asString();
-		error = mDefaultAdapter->setLogPath(TraceType::BT_TRACE_TYPE_STACK, stackLogPath);
+		error = findAdapterInfo(adapterAddress)->getAdapter()->setLogPath(TraceType::BT_TRACE_TYPE_STACK, stackLogPath);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3071,7 +1800,7 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	if (requestObj.hasKey("snoopLogPath"))
 	{
 		std::string snoopLogPath = requestObj["snoopLogPath"].asString();
-		error = mDefaultAdapter->setLogPath(TraceType::BT_TRACE_TYPE_SNOOP, snoopLogPath);
+		error = findAdapterInfo(adapterAddress)->getAdapter()->setLogPath(TraceType::BT_TRACE_TYPE_SNOOP, snoopLogPath);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3083,7 +1812,7 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	if (requestObj.hasKey("isTraceLogOverwrite"))
 	{
 		bool isTraceLogOverwrite = requestObj["isTraceLogOverwrite"].asBool();
-		error = mDefaultAdapter->setTraceOverwrite(isTraceLogOverwrite);
+		error = findAdapterInfo(adapterAddress)->getAdapter()->setTraceOverwrite(isTraceLogOverwrite);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3096,9 +1825,9 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	{
 		bool snoopTraceEnabled = requestObj["snoopTraceEnabled"].asBool();
 		if (snoopTraceEnabled)
-			error = mDefaultAdapter->enableTrace(TraceType::BT_TRACE_TYPE_SNOOP);
+			error = findAdapterInfo(adapterAddress)->getAdapter()->enableTrace(TraceType::BT_TRACE_TYPE_SNOOP);
 		else
-			error = mDefaultAdapter->disableTrace(TraceType::BT_TRACE_TYPE_SNOOP);
+			error = findAdapterInfo(adapterAddress)->getAdapter()->disableTrace(TraceType::BT_TRACE_TYPE_SNOOP);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3111,9 +1840,9 @@ bool BluetoothManagerService::setTrace(LSMessage &message)
 	{
 		bool stackTraceEnabled = requestObj["stackTraceEnabled"].asBool();
 		if (stackTraceEnabled)
-			error = mDefaultAdapter->enableTrace(TraceType::BT_TRACE_TYPE_STACK);
+			error = findAdapterInfo(adapterAddress)->getAdapter()->enableTrace(TraceType::BT_TRACE_TYPE_STACK);
 		else
-			error = mDefaultAdapter->disableTrace(TraceType::BT_TRACE_TYPE_STACK);
+			error = findAdapterInfo(adapterAddress)->getAdapter()->disableTrace(TraceType::BT_TRACE_TYPE_STACK);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3139,12 +1868,6 @@ bool BluetoothManagerService::getTraceStatus(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_1(PROP(adapterAddress, string)));
 
@@ -3193,7 +1916,7 @@ bool BluetoothManagerService::getTraceStatus(LSMessage &message)
 			LSUtils::postToClient(requestMessage, responseObj);
 			LSMessageUnref(requestMessage);
 	};
-	mDefaultAdapter->getTraceStatus(getTraceStatusCallback);
+	findAdapterInfo(adapterAddress)->getAdapter()->getTraceStatus(getTraceStatusCallback);
 
 	return true;
 }
@@ -3205,12 +1928,6 @@ bool BluetoothManagerService::setKeepAlive(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(keepAliveEnabled, boolean), PROP(adapterAddress, string), PROP(keepAliveInterval, integer)));
 
@@ -3234,7 +1951,7 @@ bool BluetoothManagerService::setKeepAlive(LSMessage &message)
 	if (requestObj.hasKey("keepAliveInterval"))
 	{
 		int keepAliveInterval = requestObj["keepAliveInterval"].asNumber<int32_t>();
-		error = mDefaultAdapter->setKeepAliveInterval(keepAliveInterval);
+		error = findAdapterInfo(adapterAddress)->getAdapter()->setKeepAliveInterval(keepAliveInterval);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3251,9 +1968,9 @@ bool BluetoothManagerService::setKeepAlive(LSMessage &message)
 		if (keepAliveEnabled != mKeepAliveEnabled)
 		{
 			if (keepAliveEnabled)
-				error = mDefaultAdapter->enableKeepAlive();
+				error = findAdapterInfo(adapterAddress)->getAdapter()->enableKeepAlive();
 			else
-				error = mDefaultAdapter->disableKeepAlive();
+				error = findAdapterInfo(adapterAddress)->getAdapter()->disableKeepAlive();
 		}
 		else
 			error = BLUETOOTH_ERROR_NONE;
@@ -3286,12 +2003,6 @@ bool BluetoothManagerService::getKeepAliveStatus(LSMessage &message)
 	int parseError = 0;
 	bool subscribed = false;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, SCHEMA_1(PROP(subscribe, boolean)), &parseError))
 	{
 		if (parseError == JSON_PARSE_SCHEMA_ERROR)
@@ -3301,6 +2012,10 @@ bool BluetoothManagerService::getKeepAliveStatus(LSMessage &message)
 
 		return true;
 	}
+
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -3326,320 +2041,6 @@ bool BluetoothManagerService::getKeepAliveStatus(LSMessage &message)
 	return true;
 }
 
-void BluetoothManagerService::requestPairingSecret(const std::string &address, BluetoothPairingSecretType type)
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	// If we're not pairing yet then this is a pairing request from a remote device
-	if (!mPairState.isPairing())
-	{
-		beginIncomingPair(address);
-	}
-
-	if (type == BLUETOOTH_PAIRING_SECRET_TYPE_PASSKEY)
-	{
-		responseObj.put("adapterAddress", mAddress);
-		responseObj.put("subscribed", true);
-		responseObj.put("returnValue", true);
-		responseObj.put("address", address);
-		responseObj.put("request", "enterPasskey");
-	}
-	else if (type == BLUETOOTH_PAIRING_SECRET_TYPE_PIN)
-	{
-		responseObj.put("adapterAddress", mAddress);
-		responseObj.put("subscribed", true);
-		responseObj.put("returnValue", true);
-		responseObj.put("address", address);
-		responseObj.put("request", "enterPinCode");
-	}
-
-	if (mPairState.isIncoming() && mIncomingPairingWatch)
-	{
-		auto device = findDevice(address);
-		if (device)
-			responseObj.put("name", device->getName());
-
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-	else if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-	{
-		LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-	}
-	else
-	{
-		stopPairing();
-	}
-}
-
-void BluetoothManagerService::displayPairingConfirmation(const std::string &address, BluetoothPasskey passkey)
-{
-	BT_DEBUG("Received display pairing confirmation request from SIL for address %s, passkey %d", address.c_str(), passkey);
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-	responseObj.put("request", "confirmPasskey");
-	responseObj.put("passkey", (int) passkey);
-
-	// If we're not pairing yet then this is a pairing request from a remote device
-	if (!mPairState.isPairing())
-	{
-		beginIncomingPair(address);
-		responseObj.put("address", address);
-	}
-
-	responseObj.put("adapterAddress", mAddress);
-	responseObj.put("subscribed", true);
-	responseObj.put("returnValue", true);
-
-	if (mPairState.isIncoming() && mIncomingPairingWatch)
-	{
-		auto device = findDevice(address);
-		if (device)
-			responseObj.put("name", device->getName());
-
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-	else if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-	{
-		LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-	}
-	else
-	{
-		stopPairing();
-	}
-}
-
-void BluetoothManagerService::pairingCanceled()
-{
-	BT_DEBUG ("Pairing has been canceled from remote user");
-	if (!(mPairState.isPairing()))
-		return;
-
-	pbnjson::JValue subscriptionResponseObj = pbnjson::Object();
-	subscriptionResponseObj.put("adapterAddress", mAddress);
-	subscriptionResponseObj.put("subscribed", true);
-	subscriptionResponseObj.put("returnValue", false);
-	subscriptionResponseObj.put("request", "endPairing");
-	subscriptionResponseObj.put("errorCode", (int32_t)BT_ERR_PAIRING_CANCEL_TO);
-	subscriptionResponseObj.put("errorText", retrieveErrorText(BT_ERR_PAIRING_CANCEL_TO));
-
-	if (mPairState.isIncoming() && mIncomingPairingWatch)
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), subscriptionResponseObj);
-
-	if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-		LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), subscriptionResponseObj);
-
-	stopPairing();
-}
-
-void BluetoothManagerService::displayPairingSecret(const std::string &address, const std::string &pin)
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	// If we're not pairing yet then this is a pairing request from a remote device
-	if (!mPairState.isPairing())
-	{
-		beginIncomingPair(address);
-	}
-	responseObj.put("adapterAddress", mAddress);
-	responseObj.put("subscribed", true);
-	responseObj.put("returnValue", true);
-	responseObj.put("request", "displayPinCode");
-	responseObj.put("address", address);
-	responseObj.put("pin", pin);
-
-	if (mPairState.isIncoming() && mIncomingPairingWatch)
-	{
-		auto device = findDevice(address);
-		if (device)
-			responseObj.put("name", device->getName());
-
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-	else if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-	{
-		LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-	}
-	else
-	{
-		stopPairing();
-	}
-}
-
-void BluetoothManagerService::displayPairingSecret(const std::string &address, BluetoothPasskey passkey)
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	// If we're not pairing yet then this is a pairing request from a remote device
-	if (!mPairState.isPairing())
-	{
-		beginIncomingPair(address);
-	}
-	responseObj.put("adapterAddress", mAddress);
-	responseObj.put("subscribed", true);
-	responseObj.put("returnValue", true);
-	responseObj.put("request", "displayPasskey");
-	responseObj.put("address", address);
-	responseObj.put("passkey", (int)passkey);
-
-	if (mPairState.isIncoming() && mIncomingPairingWatch)
-	{
-		auto device = findDevice(address);
-		if (device)
-			responseObj.put("name", device->getName());
-
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-	else if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-	{
-		LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-	}
-	else
-	{
-		stopPairing();
-	}
-}
-
-void BluetoothManagerService::beginIncomingPair(const std::string &address)
-{
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	BT_DEBUG("%s: address %s", __func__, address.c_str());
-
-	if (mPairState.isPairing())
-	{
-		BT_WARNING(MSGID_INCOMING_PAIR_REQ_FAIL, 0, "Incoming pairing request received but cannot process since we are pairing with another device");
-		return;
-	}
-
-	if (!mIncomingPairingWatch)
-		return;
-
-	auto device = findDevice(address);
-	if (device)
-	{
-		mPairState.markAsIncoming();
-
-		responseObj.put("adapterAddress", mAddress);
-		responseObj.put("request", "incomingPairRequest");
-		responseObj.put("address", address);
-		responseObj.put("name", device->getName());
-		responseObj.put("subscribed", true);
-		responseObj.put("returnValue", true);
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-
-		startPairing(device);
-	}
-	else
-	{
-		responseObj.put("adapterAddress", mAddress);
-		responseObj.put("subscribed", true);
-		responseObj.put("returnValue", false);
-		responseObj.put("errorText", retrieveErrorText(BT_ERR_INCOMING_PAIR_DEV_UNAVAIL));
-		responseObj.put("errorCode", (int32_t)BT_ERR_INCOMING_PAIR_DEV_UNAVAIL);
-		LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-	}
-}
-
-void BluetoothManagerService::abortPairing(bool incoming)
-{
-	bool cancelPairing = false;
-
-	BT_DEBUG("Abort pairing");
-
-	if (incoming)
-	{
-		// Pairable should always be true for a device with no input and output
-		// simple pairs in that case
-
-		/*
-		 * Based on the problem described in PLAT-9396, we comment this part to
-		 * maintain the pairing status even when user quit subscribing awaitPairingRequest
-		 * Once EMS (Event Monitoring Service) is introduced in the build later, we can
-		 * uncomment this part.
-		 * For now, to maintin the functionality of incoming pairing using com.webos.service.bms,
-		 * this routine will be commented. Check PLAT-9396 for more detail.
-		 * PLAT-9808 is created to recover this later.
-		if (mPairingIOCapability != BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT)
-			setPairableState(false);
-
-		if (mPairState.isPairing() && mPairState.isIncoming())
-			cancelPairing = true;
-		*/
-
-		if (mIncomingPairingWatch)
-		{
-			delete mIncomingPairingWatch;
-			mIncomingPairingWatch = 0;
-		}
-	}
-	else
-	{
-		if (mPairState.isPairing() && mPairState.isOutgoing())
-			cancelPairing = true;
-
-		if (mOutgoingPairingWatch)
-		{
-			delete mOutgoingPairingWatch;
-			mOutgoingPairingWatch = 0;
-		}
-	}
-
-	if (cancelPairing)
-	{
-		// No need to call handleCancelResponse as callback, since we lost the subscriber and
-		// we need not respond to the subscriber anymore.
-
-		auto abortPairingCb = [this](BluetoothError error) {
-			if (BLUETOOTH_ERROR_NONE == error)
-			{
-				BT_DEBUG("Pairing has been aborted");
-			}
-		};
-
-		BluetoothDevice *device = mPairState.getDevice();
-		if (device && mDefaultAdapter)
-			mDefaultAdapter->cancelPairing(device->getAddress(), abortPairingCb);
-
-		stopPairing();
-	}
-}
-
-bool BluetoothManagerService::notifyPairingListenerDropped(bool incoming)
-{
-	BT_DEBUG("Pairing listener dropped (incoming %d)", incoming);
-
-	if ((incoming && mIncomingPairingWatch) || (!incoming && mOutgoingPairingWatch))
-		abortPairing(incoming);
-
-	return true;
-}
-
-void BluetoothManagerService::notifyStartScanListenerDropped(uint32_t scanId)
-{
-	BT_DEBUG("StartScan listener dropped");
-
-	auto watchIter = mStartScanWatches.find(scanId);
-	if (watchIter == mStartScanWatches.end())
-		return;
-
-	LSUtils::ClientWatch *watch = watchIter->second;
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	responseObj.put("subscribed", false);
-	responseObj.put("returnValue", false);
-	responseObj.put("adapterAddress", mAddress);
-
-	LSUtils::postToClient(watch->getMessage(), responseObj);
-
-	mStartScanWatches.erase(watchIter);
-	delete watch;
-
-	mDefaultAdapter->removeLeDiscoveryFilter(scanId);
-
-	if (mStartScanWatches.size() == 0)
-		mDefaultAdapter->cancelLeDiscovery();
-}
-
 bool BluetoothManagerService::notifyAdvertisingDisabled(uint8_t advertiserId)
 {
 	notifySubscribersAdvertisingChanged(mAddress);
@@ -3660,7 +2061,8 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 {
 	BT_DEBUG("Advertiser(%d) dropped", advertiserId);
 
-	std::string adapterAddress = mAddress;
+	std::string adapterAddress = mAdvIdAdapterMap[advertiserId];
+
 	auto leAdvEnableCallback = [this, advertiserId, adapterAddress](BluetoothError enableError)
 	{
 		auto unregisterAdvCallback = [this,adapterAddress, advertiserId](BluetoothError registerError)
@@ -3681,8 +2083,11 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 			responseObj.put("subscribed", false);
 			responseObj.put("returnValue", true);
 			LSUtils::postToClient(mAdvertisingWatch->getMessage(), responseObj);
+			auto itr = mAdvIdAdapterMap.find(advertiserId);
+			if (itr != mAdvIdAdapterMap.end())
+				mAdvIdAdapterMap.erase(itr);
 		};
-		mDefaultAdapter->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
 
 		if (enableError != BLUETOOTH_ERROR_NONE)
 		{
@@ -3693,155 +2098,13 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 		}
 	};
 
-	mDefaultAdapter->disableAdvertiser(advertiserId, leAdvEnableCallback);
+	findAdapterInfo(adapterAddress)->getAdapter()->disableAdvertiser(advertiserId, leAdvEnableCallback);
 	return true;
 }
 
-void BluetoothManagerService::cancelDiscoveryCallback(BluetoothDevice *device, BluetoothError error)
+bool BluetoothManagerService::getPowered(const std::string &address)
 {
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	if (error != BLUETOOTH_ERROR_NONE)
-	{
-		BT_DEBUG("%s: Error is %d", __func__, error);
-		if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-		{
-			responseObj.put("adapterAddress", mAddress);
-			responseObj.put("subscribed", false);
-			responseObj.put("returnValue", false);
-			responseObj.put("errorText", retrieveErrorText(BT_ERR_STOP_DISC_FAIL));
-			responseObj.put("errorCode", (int32_t)BT_ERR_STOP_DISC_FAIL);
-			LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-
-			stopPairing();
-
-			delete mOutgoingPairingWatch;
-			mOutgoingPairingWatch = 0;
-		}
-
-		if (mPairState.isIncoming() && mIncomingPairingWatch)
-		{
-			responseObj.put("adapterAddress", mAddress);
-			responseObj.put("subscribed", true);
-			responseObj.put("returnValue", false);
-			responseObj.put("errorText", retrieveErrorText(BT_ERR_STOP_DISC_FAIL));
-			responseObj.put("errorCode", (int32_t)BT_ERR_STOP_DISC_FAIL);
-			LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-		}
-	}
-	else
-	{
-		BT_DEBUG("%s: No error", __func__);
-		if (mPairState.isOutgoing() && mOutgoingPairingWatch)
-		{
-			// Make sure discovery is canceled
-			if (!getDiscoveringState())
-			{
-				BT_DEBUG("%s: Discovery state is disabled", __func__);
-				std::string address = device->getAddress();
-				auto pairCallback = [this](BluetoothError error)
-				{
-					pbnjson::JValue responseObj = pbnjson::Object();
-					BT_DEBUG("Outgoing pairing process finished");
-
-					if (!mPairState.isPairing())
-						return;
-
-					if (BLUETOOTH_ERROR_NONE == error)
-					{
-						responseObj.put("adapterAddress", mAddress);
-						responseObj.put("subscribed", false);
-						responseObj.put("returnValue", true);
-						responseObj.put("request", "endPairing");
-					}
-					else
-					{
-						responseObj.put("adapterAddress", mAddress);
-						responseObj.put("subscribed", false);
-						responseObj.put("request", "endPairing");
-						appendErrorResponse(responseObj, error);
-					}
-					stopPairing();
-
-					if (mOutgoingPairingWatch)
-					{
-						LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-						delete mOutgoingPairingWatch;
-						mOutgoingPairingWatch = 0;
-					}
-				};
-
-				getDefaultAdapter()->pair(address, pairCallback);
-			}
-			else
-			{
-				BT_DEBUG("%s: No error, but discovery state is still enabled", __func__);
-				responseObj.put("adapterAddress", mAddress);
-				responseObj.put("subscribed", false);
-				responseObj.put("returnValue", false);
-				responseObj.put("errorText", retrieveErrorText(BT_ERR_STOP_DISC_FAIL));
-				responseObj.put("errorCode", (int32_t)BT_ERR_STOP_DISC_FAIL);
-
-				stopPairing();
-
-				LSUtils::postToClient(mOutgoingPairingWatch->getMessage(), responseObj);
-				delete mOutgoingPairingWatch;
-				mOutgoingPairingWatch = 0;
-			}
-		}
-	}
-}
-
-void BluetoothManagerService::startPairing(BluetoothDevice *device)
-{
-	mPairState.startPairing(device);
-	notifySubscribersAboutStateChange();
-	notifySubscribersFilteredDevicesChanged();
-	notifySubscribersDevicesChanged();
-
-	// Device discovery needs to be stopped for pairing
-	mDefaultAdapter->cancelDiscovery(std::bind(&BluetoothManagerService::cancelDiscoveryCallback, this, device, _1));
-}
-
-void BluetoothManagerService::stopPairing()
-{
-	mPairState.stopPairing();
-
-	notifySubscribersAboutStateChange();
-	notifySubscribersFilteredDevicesChanged();
-	notifySubscribersDevicesChanged();
-}
-
-void BluetoothManagerService::cancelIncomingPairingSubscription()
-{
-	BT_DEBUG("Cancel incoming pairing subscription since pairable timeout has reached");
-
-	// Pairable should always be true for a device with no input and output - simple pairs in that case
-	if (mPairState.isPairable() && (mPairingIOCapability != BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT))
-	{
-		if (mIncomingPairingWatch)
-		{
-			pbnjson::JValue responseObj = pbnjson::Object();
-			responseObj.put("adapterAddress", mAddress);
-			responseObj.put("subscribed", false);
-			responseObj.put("returnValue", false);
-			responseObj.put("errorText", retrieveErrorText(BT_ERR_PAIRABLE_TO));
-			responseObj.put("errorCode", (int32_t)BT_ERR_PAIRABLE_TO);
-			LSUtils::postToClient(mIncomingPairingWatch->getMessage(), responseObj);
-
-			delete mIncomingPairingWatch;
-			mIncomingPairingWatch = 0;
-		}
-
-		setPairableState(false);
-		if (mPairState.isPairing())
-			stopPairing();
-	}
-}
-
-bool BluetoothManagerService::getPowered()
-{
-	return mPowered;
+	return findAdapterInfo(address)->getPowerState();
 }
 
 
@@ -3851,12 +2114,6 @@ bool BluetoothManagerService::configureAdvertisement(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_9(PROP(adapterAddress, string), PROP(connectable, boolean), PROP(includeTxPower, boolean),
                                                      PROP(TxPower,integer), PROP(includeName, boolean), PROP(isScanResponse, boolean),
@@ -3873,23 +2130,15 @@ bool BluetoothManagerService::configureAdvertisement(LSMessage &message)
 		return true;
 	}
 
-	std::string adapterAddress;
 	bool connectable = true;
 	bool includeTxPower = false;
 	bool includeName = false;
 	bool isScanResponse = false;
 	uint8_t TxPower = 0x00;
 
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = mAddress;
-
-	if (!isAdapterAvailable(adapterAddress))
-	{
-		LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
-	}
 
 	if(requestObj.hasKey("connectable"))
 		connectable = requestObj["connectable"].asBool();
@@ -4025,7 +2274,7 @@ bool BluetoothManagerService::configureAdvertisement(LSMessage &message)
 		LSUtils::postToClient(requestMessage, responseObj);
 		LSMessageUnref(requestMessage);
 	};
-	mDefaultAdapter->configureAdvertisement(connectable, includeTxPower, includeName, isScanResponse,
+	findAdapterInfo(adapterAddress)->getAdapter()->configureAdvertisement(connectable, includeTxPower, includeName, isScanResponse,
 	                                        manufacturerData, serviceList, proprietaryDataList, leConfigCallback, TxPower);
 	return true;
 
@@ -4162,12 +2411,6 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
-
 	const std::string schema =  STRICT_SCHEMA(PROPS_5(PROP(adapterAddress, string), PROP(subscribe, boolean),
 											  OBJECT(settings, OBJSCHEMA_5(PROP(connectable, boolean), PROP(txPower, integer),
 													  PROP(minInterval, integer), PROP(maxInterval, integer), PROP(timeout, integer))),
@@ -4176,19 +2419,22 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 													  OBJARRAY(proprietaryData, OBJSCHEMA_2(PROP(type, integer), ARRAY(data, integer))))),
 											  OBJECT(scanResponse, OBJSCHEMA_5(PROP(includeTxPower, boolean), PROP(includeName, boolean),
 													  ARRAY(manufacturerData, integer), OBJARRAY(services, OBJSCHEMA_2(PROP(uuid, string),ARRAY(data,integer))),
-													  OBJARRAY(proprietaryData, OBJSCHEMA_2(PROP(type, integer), ARRAY(data, integer)))))));
+													  OBJARRAY(proprietaryData, OBJSCHEMA_2(PROP(type, integer), ARRAY(data, integer)))))) REQUIRED_1(subscribe));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
 		if (parseError != JSON_PARSE_SCHEMA_ERROR)
 			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
 
+		else if (!request.isSubscription())
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
+
 		else
 			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
 
 		return true;
 	}
-	std::string adapterAddress;
+
 	AdvertiserInfo advInfo;
 	memset(&advInfo, 0, sizeof(AdvertiserInfo));
 	//Assign default value true
@@ -4196,10 +2442,9 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 	BT_DEBUG("BluetoothManagerService::%s %d advertiseData.includeTxPower:%d", __FUNCTION__, __LINE__, advInfo.advertiseData.includeTxPower);
 	BT_DEBUG("BluetoothManagerService::%s %d scanResponse.includeTxPower:%d", __FUNCTION__, __LINE__, advInfo.scanResponse.includeTxPower);
 
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = mAddress;
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	if (requestObj.hasKey("settings"))
 	{
@@ -4252,6 +2497,7 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 						responseObj.put("returnValue", true);
 						responseObj.put("advertiserId", advertiserId);
 						notifySubscribersAdvertisingChanged(adapterAddress);
+						mAdvIdAdapterMap[advertiserId] = adapterAddress;
 					}
 					else
 					{
@@ -4266,7 +2512,7 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 				if(request.isSubscription())
 					mAdvertisingWatch->setCallback(std::bind(&BluetoothManagerService::notifyAdvertisingDropped, this, advertiserId));
 
-				mDefaultAdapter->startAdvertising(advertiserId, advInfo.settings, advInfo.advertiseData, advInfo.scanResponse, leStartAdvCallback);
+				findAdapterInfo(adapterAddress)->getAdapter()->startAdvertising(advertiserId, advInfo.settings, advInfo.advertiseData, advInfo.scanResponse, leStartAdvCallback);
 			}
 			else
 			{
@@ -4284,7 +2530,7 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 			return true;
 		}
 
-		mDefaultAdapter->registerAdvertiser(leRegisterAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->registerAdvertiser(leRegisterAdvCallback);
 	}
 	else
 	{
@@ -4310,7 +2556,7 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 			LSMessageUnref(requestMessage);
 		};
 
-		mDefaultAdapter->startAdvertising(leStartAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->startAdvertising(leStartAdvCallback);
 	}
 
 	return true;
@@ -4323,12 +2569,6 @@ bool BluetoothManagerService::disableAdvertising(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string), PROP(advertiserId, integer)) REQUIRED_1(advertiserId));
 
@@ -4346,14 +2586,11 @@ bool BluetoothManagerService::disableAdvertising(LSMessage &message)
 		return true;
 	}
 
-	std::string adapterAddress;
-
 	uint8_t advertiserId = (uint8_t)requestObj["advertiserId"].asNumber<int32_t>();
 
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = mAddress;
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
@@ -4378,8 +2615,11 @@ bool BluetoothManagerService::disableAdvertising(LSMessage &message)
 			responseObj.put("subscribed", false);
 			responseObj.put("returnValue", true);
 			LSUtils::postToClient(mAdvertisingWatch->getMessage(), responseObj);
+			auto itr = mAdvIdAdapterMap.find(advertiserId);
+			if (itr != mAdvIdAdapterMap.end())
+				mAdvIdAdapterMap.erase(itr);
 		};
-		mDefaultAdapter->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->unregisterAdvertiser(advertiserId, unregisterAdvCallback);
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -4390,7 +2630,7 @@ bool BluetoothManagerService::disableAdvertising(LSMessage &message)
 		}
 	};
 
-	mDefaultAdapter->disableAdvertiser(advertiserId, leAdvEnableCallback);
+	findAdapterInfo(adapterAddress)->getAdapter()->disableAdvertiser(advertiserId, leAdvEnableCallback);
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 	responseObj.put("advertiserId", advertiserId);
@@ -4410,12 +2650,6 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 	bool isSettingsChanged = false;
 	bool isAdvDataChanged = false;
 	bool isScanRspChanged = false;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_5(PROP(adapterAddress, string), PROP(advertiserId, integer),
 											  OBJECT(settings, OBJSCHEMA_5(PROP(connectable, boolean), PROP(txPower, integer),
@@ -4437,7 +2671,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 
 		return true;
 	}
-	std::string adapterAddress;
+
 	AdvertiserInfo advInfo;
 	memset(&advInfo, 0, sizeof(AdvertiserInfo));
 	BT_DEBUG("BluetoothManagerService::%s %d advertiseData.includeTxPower:%d", __FUNCTION__, __LINE__, advInfo.advertiseData.includeTxPower);
@@ -4445,10 +2679,9 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 
 	uint8_t advertiserId = (uint8_t)requestObj["advertiserId"].asNumber<int32_t>();
 
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = mAddress;
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	if (requestObj.hasKey("settings"))
 	{
@@ -4489,7 +2722,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 		if(!setAdvertiseData(message, requestObj,advInfo.advertiseData, false))
 			return true;
 
-		mDefaultAdapter->setAdvertiserData(advertiserId, false, advInfo.advertiseData, leUpdateAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->setAdvertiserData(advertiserId, false, advInfo.advertiseData, leUpdateAdvCallback);
 	}
 
 	if(requestObj.hasKey("scanResponse"))
@@ -4498,7 +2731,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 		if(!setAdvertiseData(message, requestObj, advInfo.scanResponse, true))
 			return true;
 
-		mDefaultAdapter->setAdvertiserData(advertiserId, true, advInfo.scanResponse, leUpdateAdvCallback);
+		findAdapterInfo(adapterAddress)->getAdapter()->setAdvertiserData(advertiserId, true, advInfo.scanResponse, leUpdateAdvCallback);
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -4510,7 +2743,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 	return true;
 }
 
-void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, uint8_t advertiserId, AdvertiserInfo advInfo,
+void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, uint8_t advertiserId, AdvertiserInfo &advInfo,
 		bool isSettingsChanged, bool isAdvDataChanged, bool isScanRspChanged)
 {
 	if(isSettingsChanged)
@@ -4530,7 +2763,7 @@ void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, ui
 				LSMessageUnref(requestMessage);
 			}
 		};
-
+		//TODO remove default adapter usage
 		mDefaultAdapter->setAdvertiserParameters(advertiserId, advInfo.settings, leAdvSettingCallback);
 	}
 
@@ -4552,6 +2785,7 @@ void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, ui
 			}
 		};
 
+		//TODO remove default adapter usage
 		mDefaultAdapter->setAdvertiserData(advertiserId, false, advInfo.advertiseData, leAdvDataChangedCallback);
 	}
 
@@ -4572,6 +2806,8 @@ void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, ui
 				LSMessageUnref(requestMessage);
 			}
 		};
+
+		//TODO remove default adapter usage
 		mDefaultAdapter->setAdvertiserData(advertiserId, true, advInfo.scanResponse, leScanRspChangedCallback);
 	}
 }
@@ -4581,12 +2817,6 @@ bool BluetoothManagerService::stopAdvertising(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_1(PROP(adapterAddress, string)));
 
@@ -4601,12 +2831,9 @@ bool BluetoothManagerService::stopAdvertising(LSMessage &message)
 		return true;
 	}
 
-	std::string adapterAddress = mAddress;
-
-	if(requestObj.hasKey("adapterAddress"))
-	{
-		adapterAddress = requestObj["adapterAddress"].asString();
-	}
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
@@ -4633,7 +2860,7 @@ bool BluetoothManagerService::stopAdvertising(LSMessage &message)
 		LSMessageUnref(requestMessage);
 	};
 
-	mDefaultAdapter->stopAdvertising(leStopAdvCallback);
+	findAdapterInfo(adapterAddress)->getAdapter()->stopAdvertising(leStopAdvCallback);
 	return true;
 }
 
@@ -4642,12 +2869,6 @@ bool BluetoothManagerService::getAdvStatus(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string),PROP(subscribe,boolean)));
 
@@ -4662,10 +2883,9 @@ bool BluetoothManagerService::getAdvStatus(LSMessage &message)
 		return true;
 	}
 
-	std::string adapterAddress = mAddress;
-
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -4689,14 +2909,6 @@ bool BluetoothManagerService::startScan(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-	int32_t leScanId = -1;
-	bool subscribed = false;
-
-	if (!mDefaultAdapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return true;
-	}
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_7(PROP(address, string), PROP(name, string),
 													PROP(subscribe, boolean), PROP(adapterAddress, string),
@@ -4720,160 +2932,9 @@ bool BluetoothManagerService::startScan(LSMessage &message)
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
-	BluetoothLeDiscoveryFilter leFilter;
-	BluetoothLeServiceUuid serviceUuid;
-	BluetoothLeServiceData serviceData;
-	BluetoothManufacturerData manufacturerData;
+	auto adapter = findAdapterInfo(adapterAddress);
 
-	if (requestObj.hasKey("address"))
-	{
-		std::string address = requestObj["address"].asString();
-		leFilter.setAddress(address);
-	}
-
-	if (requestObj.hasKey("name"))
-	{
-		std::string name = requestObj["name"].asString();
-		leFilter.setName(name);
-	}
-
-	if (requestObj.hasKey("serviceUuid"))
-	{
-		pbnjson::JValue serviceUuidObj = requestObj["serviceUuid"];
-
-		if (serviceUuidObj.hasKey("uuid"))
-		{
-			std::string uuid = serviceUuidObj["uuid"].asString();
-			serviceUuid.setUuid(uuid);
-		}
-
-		if (serviceUuidObj.hasKey("mask"))
-		{
-			std::string mask = serviceUuidObj["mask"].asString();
-			serviceUuid.setMask(mask);
-		}
-
-		leFilter.setServiceUuid(serviceUuid);
-	}
-
-	if (requestObj.hasKey("serviceData"))
-	{
-		pbnjson::JValue serviceDataObj = requestObj["serviceData"];
-
-		if (serviceDataObj.hasKey("uuid"))
-		{
-			std::string uuid = serviceDataObj["uuid"].asString();
-			serviceData.setUuid(uuid);
-		}
-
-		if (serviceDataObj.hasKey("data"))
-		{
-			BluetoothLowEnergyData data;
-			auto dataObjArray = serviceDataObj["data"];
-			for (int n = 0; n < dataObjArray.arraySize(); n++)
-			{
-				pbnjson::JValue element = dataObjArray[n];
-				data.push_back((uint8_t)element.asNumber<int32_t>());
-			}
-
-			serviceData.setData(data);
-		}
-
-		if (serviceDataObj.hasKey("mask"))
-		{
-			BluetoothLowEnergyMask mask;
-			auto maskObjArray = serviceDataObj["mask"];
-			for (int n = 0; n < maskObjArray.arraySize(); n++)
-			{
-				pbnjson::JValue element = maskObjArray[n];
-				mask.push_back((uint8_t)element.asNumber<int32_t>());
-			}
-
-			serviceData.setMask(mask);
-		}
-
-		leFilter.setServiceData(serviceData);
-
-	}
-
-	if (requestObj.hasKey("manufacturerData"))
-	{
-		pbnjson::JValue manufacturerDataObj = requestObj["manufacturerData"];
-
-		if (manufacturerDataObj.hasKey("id"))
-		{
-			int32_t id = manufacturerDataObj["id"].asNumber<int32_t>();
-			manufacturerData.setId(id);
-		}
-
-		if (manufacturerDataObj.hasKey("data"))
-		{
-			BluetoothLowEnergyData data;
-			auto dataObjArray = manufacturerDataObj["data"];
-			for (int n = 0; n < dataObjArray.arraySize(); n++)
-			{
-				pbnjson::JValue element = dataObjArray[n];
-				data.push_back((uint8_t)element.asNumber<int32_t>());
-			}
-
-			manufacturerData.setData(data);
-		}
-
-		if (manufacturerDataObj.hasKey("mask"))
-		{
-			BluetoothLowEnergyMask mask;
-			auto maskObjArray = manufacturerDataObj["mask"];
-			for (int n = 0; n < maskObjArray.arraySize(); n++)
-			{
-				pbnjson::JValue element = maskObjArray[n];
-				mask.push_back((uint8_t)element.asNumber<int32_t>());
-			}
-
-			manufacturerData.setMask(mask);
-		}
-
-		leFilter.setManufacturerData(manufacturerData);
-	}
-
-	if (request.isSubscription())
-	{
-		leScanId = mDefaultAdapter->addLeDiscoveryFilter(leFilter);
-		if (leScanId < 0)
-		{
-			LSUtils::respondWithError(request, BT_ERR_START_DISC_FAIL);
-			return true;
-		}
-
-		LSUtils::ClientWatch *watch = new LSUtils::ClientWatch(get(), &message,
-		                    std::bind(&BluetoothManagerService::notifyStartScanListenerDropped, this, leScanId));
-
-		mStartScanWatches.insert(std::pair<uint32_t, LSUtils::ClientWatch*>(leScanId, watch));
-		subscribed = true;
-	}
-
-	pbnjson::JValue responseObj = pbnjson::Object();
-
-	BluetoothError error = BLUETOOTH_ERROR_NONE;
-
-	if (mStartScanWatches.size() == 1)
-		error = mDefaultAdapter->startLeDiscovery();
-
-	if (error != BLUETOOTH_ERROR_NONE)
-	{
-		LSUtils::respondWithError(request, BT_ERR_START_DISC_FAIL);
-		return true;
-	}
-
-	responseObj.put("returnValue", true);
-	responseObj.put("subscribed", subscribed);
-	responseObj.put("adapterAddress", adapterAddress);
-
-	LSUtils::postToClient(request, responseObj);
-
-	if (leScanId > 0)
-		mDefaultAdapter->matchLeDiscoveryFilterDevices(leFilter, leScanId);
-
-	return true;
+	return adapter->startScan(request, requestObj);
 }
 
 void BluetoothManagerService::leConnectionRequest(const std::string &address, bool state)

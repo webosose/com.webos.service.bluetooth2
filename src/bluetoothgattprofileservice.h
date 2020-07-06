@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -437,8 +437,8 @@ private:
 	pbnjson::JValue buildCharacteristics(bool localAdapterServices, const BluetoothGattCharacteristicList &characteristicsList);
 	void notifyGetServicesSubscribers(bool localAdapterChanged, const std::string &adapterAddress, const std::string &deviceAddress, BluetoothGattServiceList serviceList);
 	bool parseValue(pbnjson::JValue valueObj, BluetoothGattValue *value);
-	void handleMonitorCharacteristicClientDropped(MonitorCharacteristicSubscriptionInfo subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch);
-	void handleMonitorCharacteristicsClientDropped(MonitorCharacteristicSubscriptionInfo subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch);
+	void handleMonitorCharacteristicClientDropped(MonitorCharacteristicSubscriptionInfo &subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch);
+	void handleMonitorCharacteristicsClientDropped(MonitorCharacteristicSubscriptionInfo &subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch);
 	bool isDescriptorValid(const std::string &address, const uint16_t &handle, BluetoothGattDescriptor &descriptor);
 	bool isDescriptorValid(const std::string &address, const std::string &serviceUuid, const std::string &descriptorUuuid,
 	                       const std::string &characteristicUuid, BluetoothGattDescriptor &descriptor);

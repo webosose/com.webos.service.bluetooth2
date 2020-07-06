@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ BluetoothDevice::BluetoothDevice() :
 	mTrusted(false),
 	mBlocked(false),
 	mConnected(false),
-	mRole(0xFFFFFFFF),
+	mRole(BLUETOOTH_DEVICE_ROLE),
 	mRssi(0),
 	mAccessCode(InquiryAccessCode::BT_ACCESS_CODE_NONE)
 {
@@ -43,7 +43,7 @@ BluetoothDevice::BluetoothDevice(BluetoothPropertiesList &properties) :
 	mBlocked(false),
 	mConnected(false),
 	mRssi(0),
-	mRole(0xFFFFFFFF)
+	mRole(BLUETOOTH_DEVICE_ROLE)
 {
 	update(properties);
 }

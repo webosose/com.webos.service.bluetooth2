@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,7 +42,9 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_NOT_ALLOWED, "Performed operation is not allowed"},
 	{BLUETOOTH_ERROR_ABORTED, "Operation was aborted"},
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_ENABLED, "Tethering is already enabled"},
-	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"}
+	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"},
+	{BLUETOOTH_ERROR_ALREADY_CONNECTED_ONE_DEVICE, "One headset already connected to this adapter please check in device/getStatus"},
+	{BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE, "No folder is selected"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -230,6 +232,16 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_GATT_READ_DESCRIPTOR_FAIL, "Failed to read descriptor"},
 	{BT_ERR_GATT_INSTANCE_ID_NOT_SUPPORTED, "'instanceId' is not supported"},
 	{BT_ERR_CLIENTID_PARAM_MISSING, "Required 'clientId' parameter is not supplied"},
+	{BT_ERR_API_NOT_SUPPORTED_BY_STACK, "API not supported by stack"},
+	{BT_ERR_DELAY_REPORTING_ALREADY_ENABLED, "Delay reporting already enabled"},
+	{BT_ERR_DELAY_REPORTING_ALREADY_DISABLED, "Delay reporting already disabled"},
+	{BT_ERR_DELAY_REPORTING_DISABLED, "Delay reporting is  disabled, please enable it to use this api"},
+	{BT_ERR_PBAP_REPOSITORY_PARAM_MISSING, "Required 'repository' parameter is not supplied"},
+	{BT_ERR_PBAP_OBJECT_PARAM_MISSING, "Required 'object ' parameter is not supplied"},
+	{BT_ERR_NOT_NOT_SUPPORTED_BY_REMOTE_DEVICE, "feature is not supported by remote device"},
+	{BT_ERR_PBAP_VCARD_HANDLE_PARAM_MISSING, "Required 'vCardHandle' parameter is not supplied"},
+	{BT_ERR_PBAP_FILTER_PARAM_MISSING, "Required 'filter' parameter is not supplied"},
+	{BT_ERR_AVRCP_NO_CONNECTED_DEVICES, "No AVRCP connected device exist"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
