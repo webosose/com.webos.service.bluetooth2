@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -243,7 +243,7 @@ bool BluetoothGattAncsProfile::isAncsServiceSupported(LSMessage *requestMessage,
 	//TODO:Should get called after BSA_BLE_CL_SEARCH_CMPL_EVT instead of waiting for timeout
 	BT_DEBUG("[%s](%d) getImpl->getServices\n", __FUNCTION__, __LINE__);
 	BluetoothGattServiceList serviceList = getImpl<BluetoothGattProfile>()->getServices(address);
-	BT_DEBUG("%s: serviceList length for address %s %d", __func__, address.c_str(), serviceList.size());
+	BT_DEBUG("%s: serviceList length for address %s %zu", __func__, address.c_str(), serviceList.size());
 	bool found = false;
 	for (auto service : serviceList) {
 		if (service.getUuid()==mAncsUuid) {
@@ -748,7 +748,7 @@ void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &add
 		{
 			LS::SubscriptionPoint *subscriptionPoint = notificationIter->second;
 			BluetoothGattValue values = characteristic.getValue();
-			BT_DEBUG("Found notification source characteristic value of size %d", values.size());
+			BT_DEBUG("Found notification source characteristic value of size %zu", values.size());
 
 			int eventID = (int32_t) values[0];
 			int eventFlags = (int32_t) values[1];

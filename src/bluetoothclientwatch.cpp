@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,20 +14,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef UTILS_H
-#define UTILS_H
+#include "bluetoothclientwatch.h"
 
-#include <string>
-#include <vector>
+BluetoothClientWatch::BluetoothClientWatch(LSHandle* handle, LSMessage* message, LSUtils::ClientWatchStatusCallback callback,
+	std::string adapterAddress, std::string deviceAddress) :
+	ClientWatch(handle, message, callback),
+	mAdapterAddress(adapterAddress),
+	mDeviceAddress(deviceAddress)
+{
 
-std::vector<std::string> split(const std::string &s, char delim);
-std::string convertToLower(const std::string &input);
-std::string convertToUpper(const std::string &input);
+}
 
-bool checkPathExists(const std::string &path);
-bool checkFileIsValid(const std::string &path);
-std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
+BluetoothClientWatch::~BluetoothClientWatch()
+{
 
-void write_kernel_log(const char *message);
-void bt_ready_msg2kernel(void);
-#endif // UTILS_H
+}

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@
 class BluetoothManagerService;
 class BluetoothProfile;
 class BluetoothDevice;
+class BluetoothManagerAdapter;
 
 namespace LS
 {
@@ -51,14 +52,19 @@ public:
 	virtual ~BluetoothProfileService();
 
 	virtual void initialize();
+	virtual void initialize(const std::string  &adapterAddress);
 	virtual void reset();
+	virtual void reset(const std::string &adapterAddress);
 
 	std::string getName() const;
 	std::vector<std::string> getUuids() const;
 
 	void propertiesChanged(const std::string &address, BluetoothPropertiesList properties);
+	void propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
 	bool isDeviceConnected(const std::string &address);
+	bool isDeviceConnected(const std::string &adapterAddress, const std::string &address);
 	bool isDeviceConnecting(const std::string &address);
+	bool isDeviceConnecting(const std::string &adapterAddress, const std::string &address);
 
 public:
 	virtual bool connect(LSMessage &message);
@@ -73,9 +79,16 @@ protected:
 	template<typename T>
 	inline T* getImpl() { return dynamic_cast<T*>(mImpl); }
 
+	template<typename T>
+	inline T* getImpl(const std::string &adapterAddress) { return dynamic_cast<T*>(findImpl(adapterAddress)); }
+
 	BluetoothProfile *mImpl;
 	std::map<std::string, LSUtils::ClientWatch*> mConnectWatches;
 	std::map<std::string, LS::SubscriptionPoint*> mGetStatusSubscriptions;
+	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mConnectWatchesForMultipleAdapters;
+	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mGetStatusSubscriptionsForMultipleAdapters;
+
+	std::map<std::string, BluetoothProfile*> mImpls;
 
 	virtual bool isDevicePaired(const std::string &address);
 	virtual void notifyStatusSubscribers(const std::string &adapterAddress, const std::string &address, bool connected);
@@ -90,11 +103,18 @@ protected:
 	void appendCommonProfileStatus(pbnjson::JValue responseObj, bool connected, bool connecting, bool subscribed,
 	                                   bool returnValue, std::string adapterAddress, std::string deviceAddress);
 	void markDeviceAsConnected(const std::string &address);
+	void markDeviceAsConnected(const std::string &adapterAddress, const std::string &address);
 	void markDeviceAsNotConnected(const std::string &address);
+	void markDeviceAsNotConnected(const std::string &adapterAddress, const std::string &address);
 	void removeConnectWatchForDevice(const std::string &key, bool disconnected, bool remoteDisconnect = true);
+	void removeConnectWatchForDevice(const std::string &adapterAddress, const std::string &key, bool disconnected, bool remoteDisconnect = true);
 	void markDeviceAsConnecting(const std::string &address);
+	void markDeviceAsConnecting(const std::string &adapterAddress, const std::string &address);
 	void markDeviceAsNotConnecting(const std::string &address);
+	void markDeviceAsNotConnecting(const std::string &adapterAddress, const std::string &address);
 	void handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &address);
+
+	BluetoothProfile* findImpl (const std::string &adapterAddress);
 
 private:
 	std::vector<std::string> strToProfileRole(const std::string & input);
@@ -106,7 +126,9 @@ private:
 	std::vector<std::string> mConnectedDevices;
 	std::vector<std::string> mEnabledRoles;
 	BluetoothResultCallback mCallback;
+
+	std::map<std::string, std::vector<std::string>> mConnectedDevicesForMultipleAdapters;
+	std::map<std::string, std::vector<std::string>> mConnectingDevicesForMultipleAdapters;
 };
 
 #endif
-

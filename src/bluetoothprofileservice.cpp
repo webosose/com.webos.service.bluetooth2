@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2019 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "bluetoothdevice.h"
 #include "bluetoothserviceclasses.h"
 #include "bluetootherrors.h"
+#include "bluetoothmanageradapter.h"
 #include "ls2utils.h"
 #include "clientwatch.h"
 #include "logging.h"
@@ -58,14 +59,41 @@ void BluetoothProfileService::initialize()
 
 	mImpl = defaultAdapter->getProfile(mName);
 
+	mImpls.insert(std::pair<std::string, BluetoothProfile*>(getManager()->getAddress(), mImpl));
+
 	if (mImpl)
 		mImpl->registerObserver(this);
 }
+
+void BluetoothProfileService::initialize(const std::string  &adapterAddress)
+{
+	auto adapter = mManager->getAdapter(adapterAddress);
+	if (!adapter)
+		return;
+
+	BluetoothProfile *impl = adapter->getProfile(mName);
+	if (impl)
+		impl->registerObserver(this);
+
+	mImpls.insert(std::pair<std::string, BluetoothProfile*>(adapterAddress, impl));
+}
+
 
 void BluetoothProfileService::reset()
 {
 	// Our backend is gone so reset everything
 	mImpl = 0;
+}
+
+void BluetoothProfileService::reset(const std::string &adapterAddress)
+{
+	// Our backend is gone so reset everything
+
+	auto implIter = mImpls.find(adapterAddress);
+	if (implIter == mImpls.end())
+		return;
+
+	mImpls.erase(implIter);
 }
 
 BluetoothManagerService* BluetoothProfileService::getManager() const
@@ -85,13 +113,19 @@ std::vector<std::string> BluetoothProfileService::getUuids() const
 
 void BluetoothProfileService::notifyStatusSubscribers(const std::string &adapterAddress, const std::string &address, bool connected)
 {
-	auto subscriptionIter = mGetStatusSubscriptions.find(address);
-	if (subscriptionIter == mGetStatusSubscriptions.end())
+	BT_INFO("PROFILE", 0, "%s is called", __FUNCTION__);
+
+	auto subscriptionsIter = mGetStatusSubscriptionsForMultipleAdapters.find(adapterAddress);
+	if (subscriptionsIter == mGetStatusSubscriptionsForMultipleAdapters.end())
+		return;
+
+	auto subscriptionIter = (subscriptionsIter->second).find(address);
+	if (subscriptionIter == (subscriptionsIter->second).end())
 		return;
 
 	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
 
-	pbnjson::JValue responseObj = buildGetStatusResp(connected, isDeviceConnecting(address), true,
+	pbnjson::JValue responseObj = buildGetStatusResp(connected, isDeviceConnecting(adapterAddress, address), true,
 	                                                 true, adapterAddress, address);
 
 	LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
@@ -102,12 +136,37 @@ bool BluetoothProfileService::isDeviceConnecting(const std::string &address)
 	return (std::find(mConnectingDevices.begin(), mConnectingDevices.end(), address) != mConnectingDevices.end());
 }
 
+bool BluetoothProfileService::isDeviceConnecting(const std::string &adapterAddress, const std::string &address)
+{
+	auto connectingDevicesiter = mConnectingDevicesForMultipleAdapters.find(adapterAddress);
+	if (connectingDevicesiter == mConnectingDevicesForMultipleAdapters.end())
+		return false;
+
+	return (std::find((connectingDevicesiter->second).begin(), (connectingDevicesiter->second).end(), address) != (connectingDevicesiter->second).end());
+}
+
 void BluetoothProfileService::markDeviceAsConnecting(const std::string &address)
 {
 	if (isDeviceConnecting(address))
 		return;
 
 	mConnectingDevices.push_back(address);
+}
+
+void BluetoothProfileService::markDeviceAsConnecting(const std::string &adapterAddress, const std::string &address)
+{
+	auto connectingDevicesiter = mConnectingDevicesForMultipleAdapters.find(adapterAddress);
+	if (connectingDevicesiter == mConnectingDevicesForMultipleAdapters.end())
+	{
+		std::vector<std::string> connectingDevices;
+		connectingDevices.push_back(address);
+
+		mConnectingDevicesForMultipleAdapters.insert(std::pair<std::string, std::vector<std::string>>(adapterAddress, connectingDevices));
+		return;
+	}
+
+	if (!isDeviceConnecting(adapterAddress, address))
+		(connectingDevicesiter->second).push_back(address);
 }
 
 void BluetoothProfileService::markDeviceAsNotConnecting(const std::string &address)
@@ -120,9 +179,32 @@ void BluetoothProfileService::markDeviceAsNotConnecting(const std::string &addre
 	mConnectingDevices.erase(deviceIter);
 }
 
+void BluetoothProfileService::markDeviceAsNotConnecting(const std::string &adapterAddress, const std::string &address)
+{
+	auto connectingDevicesiter = mConnectingDevicesForMultipleAdapters.find(adapterAddress);
+	if (connectingDevicesiter == mConnectingDevicesForMultipleAdapters.end())
+		return;
+
+	auto deviceIter = std::find((connectingDevicesiter->second).begin(), (connectingDevicesiter->second).end(), address);
+
+	if (deviceIter == (connectingDevicesiter->second).end())
+		return;
+
+	(connectingDevicesiter->second).erase(deviceIter);
+}
+
 bool BluetoothProfileService::isDeviceConnected(const std::string &address)
 {
 	return (std::find(mConnectedDevices.begin(), mConnectedDevices.end(), address) != mConnectedDevices.end());
+}
+
+bool BluetoothProfileService::isDeviceConnected(const std::string &adapterAddress, const std::string &address)
+{
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(adapterAddress);
+	if (connectedDevicesiter == mConnectedDevicesForMultipleAdapters.end())
+		return false;
+
+	return (std::find((connectedDevicesiter->second).begin(), (connectedDevicesiter->second).end(), address) != (connectedDevicesiter->second).end());
 }
 
 void BluetoothProfileService::markDeviceAsConnected(const std::string &address)
@@ -133,6 +215,22 @@ void BluetoothProfileService::markDeviceAsConnected(const std::string &address)
 	mConnectedDevices.push_back(address);
 }
 
+void BluetoothProfileService::markDeviceAsConnected(const std::string &adapterAddress, const std::string &address)
+{
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(adapterAddress);
+	if (connectedDevicesiter == mConnectedDevicesForMultipleAdapters.end())
+	{
+		std::vector<std::string> connectedDevices;
+		connectedDevices.push_back(address);
+
+		mConnectedDevicesForMultipleAdapters.insert(std::pair<std::string, std::vector<std::string>>(adapterAddress, connectedDevices));
+		return;
+	}
+
+	if (!isDeviceConnected(adapterAddress, address))
+		(connectedDevicesiter->second).push_back(address);
+}
+
 void BluetoothProfileService::markDeviceAsNotConnected(const std::string &address)
 {
 	auto deviceIter = std::find(mConnectedDevices.begin(), mConnectedDevices.end(), address);
@@ -141,6 +239,20 @@ void BluetoothProfileService::markDeviceAsNotConnected(const std::string &addres
 		return;
 
 	mConnectedDevices.erase(deviceIter);
+}
+
+void BluetoothProfileService::markDeviceAsNotConnected(const std::string &adapterAddress, const std::string &address)
+{
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(adapterAddress);
+	if (connectedDevicesiter == mConnectedDevicesForMultipleAdapters.end())
+		return;
+
+	auto deviceIter = std::find((connectedDevicesiter->second).begin(), (connectedDevicesiter->second).end(), address);
+
+	if (deviceIter == (connectedDevicesiter->second).end())
+		return;
+
+	(connectedDevicesiter->second).erase(deviceIter);
 }
 
 void BluetoothProfileService::propertiesChanged(const std::string &address, BluetoothPropertiesList properties)
@@ -169,6 +281,51 @@ void BluetoothProfileService::propertiesChanged(const std::string &address, Blue
 			// are not available for the specified device.
 			if (!connected)
 				removeConnectWatchForDevice(convertToLower(address), !connected);
+
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void BluetoothProfileService::propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties)
+{
+
+	BT_INFO("PROFILE", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	bool connected = false;
+
+	if (getName() == "OPP")
+		propertiesChanged(address, properties);
+
+	auto adapterInfo = getManager()->findAdapterInfo(adapterAddress);
+
+	for (auto prop : properties)
+	{
+		switch (prop.getType())
+		{
+		case BluetoothProperty::Type::CONNECTED:
+			connected = prop.getValue<bool>();
+
+			if (!connected)
+			{
+				markDeviceAsNotConnected(adapterAddress, address);
+			}
+			else
+			{
+				markDeviceAsNotConnecting(adapterAddress, address);
+				markDeviceAsConnected(adapterAddress, address);
+			}
+
+			notifyStatusSubscribers(adapterAddress, address, connected);
+			adapterInfo->notifySubscribersConnectedDevicesChanged();
+
+			// When we switch from connected to disconnected we always just try to
+			// remove all subscription. Called method will just return when subscriptions
+			// are not available for the specified device.
+			if (!connected)
+				removeConnectWatchForDevice(convertToLower(adapterAddress), convertToLower(address), !connected);
 
 			break;
 		default:
@@ -210,16 +367,23 @@ bool BluetoothProfileService::isConnectSchemaAvailable(LS::Message &request, pbn
 void BluetoothProfileService::connectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress)
 {
 	std::string address = convertToLower(requestObj["address"].asString());
-	if (isDeviceConnecting(address))
+	if (isDeviceConnecting(adapterAddress, address))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEV_CONNECTING);
+		return;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return;
 	}
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto isConnectedCallback = [this, requestMessage, adapterAddress, address](BluetoothError error, const BluetoothProperty &property) {
+	auto isConnectedCallback = [this, requestMessage, adapterAddress, address, impl](BluetoothError error, const BluetoothProperty &property) {
 		LS::Message request(requestMessage);
 
 		if (error != BLUETOOTH_ERROR_NONE)
@@ -238,7 +402,7 @@ void BluetoothProfileService::connectToStack(LS::Message &request, pbnjson::JVal
 			return;
 		}
 
-		markDeviceAsConnecting(address);
+		markDeviceAsConnecting(adapterAddress, address);
 		notifyStatusSubscribers(adapterAddress, address, false);
 
 		auto connectCallback = [this, requestMessage, adapterAddress, address](BluetoothError error) {
@@ -249,10 +413,10 @@ void BluetoothProfileService::connectToStack(LS::Message &request, pbnjson::JVal
 
 			if (error != BLUETOOTH_ERROR_NONE)
 			{
-				LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
+				LSUtils::respondWithError(request, error);
 				LSMessageUnref(request.get());
 
-				markDeviceAsNotConnecting(address);
+				markDeviceAsNotConnecting(adapterAddress, address);
 				notifyStatusSubscribers(adapterAddress, address, false);
 				return;
 			}
@@ -266,13 +430,32 @@ void BluetoothProfileService::connectToStack(LS::Message &request, pbnjson::JVal
 			// dropped.
 			if (request.isSubscription())
 			{
-				auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-				                    std::bind(&BluetoothProfileService::handleConnectClientDisappeared, this, adapterAddress, address));
+				auto watchesIter = mConnectWatchesForMultipleAdapters.find(adapterAddress);
+				if (watchesIter == mConnectWatchesForMultipleAdapters.end())
+				{
+					std::map<std::string, LSUtils::ClientWatch*> connectWatches;
+					auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
+										std::bind(&BluetoothProfileService::handleConnectClientDisappeared, this, adapterAddress, address));
 
-				mConnectWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(address, watch));
+					connectWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(address, watch));
+					mConnectWatchesForMultipleAdapters.insert(std::pair<std::string, std::map<std::string, LSUtils::ClientWatch*>>(adapterAddress, connectWatches));
+				}
+				else
+				{
+					auto watchIter = (watchesIter->second).find(address);
+					if (watchIter == (watchesIter->second).end())
+					{
+						std::map<std::string, LSUtils::ClientWatch*> connectWatches;
+						auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
+											std::bind(&BluetoothProfileService::handleConnectClientDisappeared, this, adapterAddress, address));
+
+						(watchesIter->second).insert(std::pair<std::string, LSUtils::ClientWatch*>(address, watch));
+					}
+				}
+
 				subscribed = true;
 			}
-			markDeviceAsConnected(address);
+			markDeviceAsConnected(adapterAddress, address);
 
 			pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -289,12 +472,13 @@ void BluetoothProfileService::connectToStack(LS::Message &request, pbnjson::JVal
 		};
 
 		BT_INFO("PROFILE", 0, "Service calls SIL API : connect to %s", address.c_str());
-		mImpl->connect(address, connectCallback);
+		impl->connect(address, connectCallback);
 	};
 
 	// Before we start to connect with the device we have to make sure
 	// we're not already connected with it.
-	mImpl->getProperty(address, BluetoothProperty::Type::CONNECTED, isConnectedCallback);
+//	mImpl->getProperty(address, BluetoothProperty::Type::CONNECTED, isConnectedCallback);
+	impl->getProperty(address, BluetoothProperty::Type::CONNECTED, isConnectedCallback);
 }
 
 bool BluetoothProfileService::connect(LSMessage &message)
@@ -304,29 +488,33 @@ bool BluetoothProfileService::connect(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 
-	if (!mImpl)
+	if (!isConnectSchemaAvailable(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = mManager->findAdapterInfo(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return true;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return true;
 	}
 
-	if (!isConnectSchemaAvailable(request, requestObj))
-		return true;
-
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
-
-	std::string deviceAddress = requestObj["address"].asString();
-	if (!getManager()->isDeviceAvailable(deviceAddress))
+	std::string deviceAddress = convertToLower(requestObj["address"].asString());
+	if (!adapter->findDevice(deviceAddress))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
-	}
-
-	if (!isDevicePaired(deviceAddress))
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEV_NOT_PAIRED, true);
 		return true;
 	}
 
@@ -337,19 +525,24 @@ bool BluetoothProfileService::connect(LSMessage &message)
 
 void BluetoothProfileService::handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &address)
 {
-	auto watchIter = mConnectWatches.find(address);
-	if (watchIter == mConnectWatches.end())
+	auto watchesIter = mConnectWatchesForMultipleAdapters.find(adapterAddress);
+	if (watchesIter == mConnectWatchesForMultipleAdapters.end())
 		return;
 
-	if (!mImpl)
+	auto watchIter = (watchesIter->second).find(address);
+	if (watchIter == (watchesIter->second).end())
+		return;
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
 		return;
 
 	auto disconnectCallback = [this, address, adapterAddress](BluetoothError error) {
-		markDeviceAsNotConnected(address);
-		markDeviceAsNotConnecting(address);
+		markDeviceAsNotConnected(adapterAddress, address);
+		markDeviceAsNotConnecting(adapterAddress, address);
 	};
 
-	mImpl->disconnect(address, disconnectCallback);
+	impl->disconnect(address, disconnectCallback);
 }
 
 void BluetoothProfileService::removeConnectWatchForDevice(const std::string &key, bool disconnected, bool remoteDisconnect)
@@ -380,6 +573,37 @@ void BluetoothProfileService::removeConnectWatchForDevice(const std::string &key
 	delete watch;
 }
 
+void BluetoothProfileService::removeConnectWatchForDevice(const std::string &adapterAddress, const std::string &key, bool disconnected, bool remoteDisconnect)
+{
+	auto watchesIter = mConnectWatchesForMultipleAdapters.find(adapterAddress);
+	if (watchesIter == mConnectWatchesForMultipleAdapters.end())
+		return;
+
+	auto watchIter = (watchesIter->second).find(key);
+	if (watchIter == (watchesIter->second).end())
+		return;
+
+	LSUtils::ClientWatch *watch = watchIter->second;
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	responseObj.put("subscribed", false);
+	responseObj.put("returnValue", true);
+	if (disconnected)
+	{
+		if (remoteDisconnect)
+			responseObj.put("disconnectByRemote", true);
+		else
+			responseObj.put("disconnectByRemote", false);
+	}
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(watch->getMessage(), responseObj);
+
+	(watchesIter->second).erase(watchIter);
+	delete watch;
+}
+
 bool BluetoothProfileService::isDisconnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj)
 {
 	int parseError = 0;
@@ -402,16 +626,31 @@ bool BluetoothProfileService::isDisconnectSchemaAvailable(LS::Message &request, 
 
 void BluetoothProfileService::disconnectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress)
 {
+	auto adapter = getManager()->findAdapterInfo(adapterAddress);
+
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return;
+	}
+
 	std::string address = convertToLower(requestObj["address"].asString());
-	if (!mManager->isDeviceAvailable(address))
+	if (!adapter->findDevice(address))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
 		return;
 	}
 
-	if (!isDeviceConnected(address))
+	if (!isDeviceConnected(adapterAddress, address))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return;
 	}
 
@@ -436,14 +675,14 @@ void BluetoothProfileService::disconnectToStack(LS::Message &request, pbnjson::J
 		responseObj.put("address", address);
 		LSUtils::postToClient(request, responseObj);
 
-		removeConnectWatchForDevice(address, true, false);
-		markDeviceAsNotConnected(address);
-		markDeviceAsNotConnecting(address);
+		removeConnectWatchForDevice(adapterAddress, address, true, false);
+		markDeviceAsNotConnected(adapterAddress, address);
+		markDeviceAsNotConnecting(adapterAddress, address);
 		LSMessageUnref(request.get());
 	};
 
 	BT_INFO("PROFILE", 0, "Service calls SIL API : disconnect to %s", address.c_str());
-	mImpl->disconnect(address, disconnectCallback);
+	impl->disconnect(address, disconnectCallback);
 }
 
 bool BluetoothProfileService::disconnect(LSMessage &message)
@@ -453,18 +692,21 @@ bool BluetoothProfileService::disconnect(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 
-	if (!mImpl)
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	if (!isDisconnectSchemaAvailable(request, requestObj))
 		return true;
 
 	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+	if (requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+	auto adapter = mManager->findAdapterInfo(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
 		return true;
+	}
 
 	disconnectToStack(request, requestObj, adapterAddress);
 
@@ -520,7 +762,8 @@ bool BluetoothProfileService::enable(LSMessage &message)
 		return true;
 	}
 
-	if(!getManager()->getPowered())
+	auto adapter = mManager->findAdapterInfo(adapterAddress);
+	if(adapter && !adapter->getPowerState())
 	{
 		return true;
 	}
@@ -534,7 +777,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	if(role.length() > 0 && getManager()->isRoleEnable(role))
+	if(role.length() > 0 && getManager()->isRoleEnable(adapterAddress, role))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_ENABLED);
 		return true;
@@ -617,7 +860,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 	{
 		role = convertToLower(requestObj["role"].asString());
 	}
-	if(role.length() > 0 && !getManager()->isRoleEnable(role))
+	if(role.length() > 0 && !getManager()->isRoleEnable(adapterAddress, role))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_ENABLED);
 		return true;
@@ -689,21 +932,32 @@ bool BluetoothProfileService::getStatus(LSMessage &message)
 	pbnjson::JValue requestObj;
 	bool subscribed = false;
 
-	if (!mImpl)
+	if (!isGetStatusSchemaAvailable(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (requestObj.hasKey("adapterAddress"))
+		adapterAddress = requestObj["adapterAddress"].asString();
+	else
+		adapterAddress = getManager()->getAddress();
+
+
+	auto adapter = mManager->findAdapterInfo(adapterAddress);
+	if (!adapter)
+	{
+		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+		return true;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return true;
 	}
 
-	if (!isGetStatusSchemaAvailable(request, requestObj))
-		return true;
-
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
-
 	std::string deviceAddress = convertToLower(requestObj["address"].asString());
-	if (!mManager->isDeviceAvailable(deviceAddress))
+	if (!adapter->findDevice(deviceAddress))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
 		return true;
@@ -713,16 +967,32 @@ bool BluetoothProfileService::getStatus(LSMessage &message)
 	{
 		LS::SubscriptionPoint *subscriptionPoint = 0;
 
-		auto subscriptionIter = mGetStatusSubscriptions.find(deviceAddress);
-		if (subscriptionIter == mGetStatusSubscriptions.end())
+		auto subscriptionsIter = mGetStatusSubscriptionsForMultipleAdapters.find(adapterAddress);
+		if (subscriptionsIter == mGetStatusSubscriptionsForMultipleAdapters.end())
 		{
+			std::map<std::string, LS::SubscriptionPoint*> subscriptions;
 			subscriptionPoint = new LS::SubscriptionPoint;
 			subscriptionPoint->setServiceHandle(getManager());
-			mGetStatusSubscriptions.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+			subscriptions.insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+
+			mGetStatusSubscriptionsForMultipleAdapters.insert(std::pair<std::string, std::map<std::string, LS::SubscriptionPoint*>>(adapterAddress, subscriptions));
+
 		}
 		else
 		{
-			subscriptionPoint = subscriptionIter->second;
+			auto subscriptionIter = (subscriptionsIter->second).find(deviceAddress);
+			if (subscriptionIter == (subscriptionsIter->second).end())
+			{
+				std::map<std::string, LS::SubscriptionPoint*> subscriptions;
+				subscriptionPoint = new LS::SubscriptionPoint;
+				subscriptionPoint->setServiceHandle(getManager());
+				(subscriptionsIter->second).insert(std::pair<std::string, LS::SubscriptionPoint*>(deviceAddress, subscriptionPoint));
+
+			}
+			else
+			{
+				subscriptionPoint = subscriptionIter->second;
+			}
 		}
 
 		subscriptionPoint->subscribe(request);
@@ -741,13 +1011,13 @@ bool BluetoothProfileService::getStatus(LSMessage &message)
 			return;
 		}
 
-		pbnjson::JValue responseObj = buildGetStatusResp(property.getValue<bool>(), isDeviceConnecting(deviceAddress), subscribed,
+		pbnjson::JValue responseObj = buildGetStatusResp(property.getValue<bool>(), isDeviceConnecting(adapterAddress, deviceAddress), subscribed,
 			true, adapterAddress, deviceAddress);
 
 		LSUtils::postToClient(request, responseObj);
 	};
 
-	mImpl->getProperty(deviceAddress, BluetoothProperty::Type::CONNECTED, getPropCallback);
+	impl->getProperty(deviceAddress, BluetoothProperty::Type::CONNECTED, getPropCallback);
 
 	return true;
 }
@@ -772,4 +1042,19 @@ pbnjson::JValue BluetoothProfileService::buildGetStatusResp(bool connected, bool
 	                          returnValue, adapterAddress, deviceAddress);
 
 	return responseObj;
+}
+
+BluetoothProfile* BluetoothProfileService::findImpl (const std::string &adapterAddress)
+{
+	std::string convertedAddress = convertToLower(adapterAddress);
+	auto implIter = mImpls.find(convertedAddress);
+	if (implIter == mImpls.end())
+	{
+		convertedAddress = convertToUpper(adapterAddress);
+		implIter = mImpls.find(convertedAddress);
+		if (implIter == mImpls.end())
+			return 0;
+	}
+
+	return implIter->second;
 }

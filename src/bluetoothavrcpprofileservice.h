@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 
 #include <string>
 #include <map>
+#include <list>
 
 #include <bluetooth-sil-api.h>
 #include <luna-service2/lunaservice.hpp>
@@ -45,6 +46,8 @@ namespace LSUtils
 	class ClientWatch;
 }
 
+class BluetoothClientWatch;
+
 class BluetoothAvrcpProfileService : public BluetoothProfileService, BluetoothAvrcpStatusObserver
 {
 public:
@@ -52,6 +55,7 @@ public:
 	~BluetoothAvrcpProfileService();
 
 	void initialize();
+	void initialize(const std::string &adapterAddress);
 	bool awaitMediaMetaDataRequest(LSMessage &message);
 	bool supplyMediaMetaData(LSMessage &message);
 	bool awaitMediaPlayStatusRequest(LSMessage &message);
@@ -64,22 +68,37 @@ public:
 	bool setAbsoluteVolume(LSMessage &message);
 	bool getRemoteVolume(LSMessage &message);
 	bool receivePassThroughCommand(LSMessage &message);
+	bool addClientWatch(LS::Message& request, std::list<BluetoothClientWatch*>* clientWatch,
+		std::string adapterAddress, std::string deviceAddress);
 	bool getSupportedNotificationEvents(LSMessage &message);
 	bool getRemoteFeatures(LSMessage &message);
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
-	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &address);
-	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &address);
-	void volumeChanged(int volume, const std::string &address);
+	void mediaDataReceived(const BluetoothMediaMetaData& metaData, const std::string& address);
+	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &adapterAddress,
+		const std::string &address);
+	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus& playStatus, const std::string& address);
+	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus,  const std::string &adapterAddress,
+		const std::string &address);
+	void volumeChanged(int volume, const std::string &adapterAddress, const std::string &address);
 	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus, const std::string &address);
+	void passThroughCommandReceived(BluetoothAvrcpPassThroughKeyCode keyCode, BluetoothAvrcpPassThroughKeyStatus keyStatus,
+									const std::string &adapterAddress,const std::string &address);
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address, const std::string &role);
+	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &adapterAddress, const std::string &address, const std::string &role);
 	void supportedNotificationEventsReceived(const BluetoothAvrcpSupportedNotificationEventList &events, const std::string &address);
+	void supportedNotificationEventsReceived(const BluetoothAvrcpSupportedNotificationEventList& events,
+		const std::string &adapterAddress, const std::string& address);
+	void playerApplicationSettingsReceived(const BluetoothPlayerApplicationSettingsPropertiesList& properties,
+		const std::string& adapterAddress, const std::string& address);
 
 	/*
 	 * This will be deprecated on implementation of remoteFeaturesReceived with role.
 	 */
 	void remoteFeaturesReceived(BluetoothAvrcpRemoteFeatures features, const std::string &address);
+
+	void propertiesChanged(const std::string &adapterAddress, const std::string &address, BluetoothPropertiesList properties);
 
 private:
 	class MediaRequest
@@ -105,9 +124,9 @@ private:
 	void notifyConfirmationRequest(LS::Message &request, const std::string &requestId, const std::string &adapterAddress, bool success);
 	void parseMediaMetaData(const pbnjson::JValue &dataObj, BluetoothMediaMetaData *data);
 	void parseMediaPlayStatus(const pbnjson::JValue &dataObj, BluetoothMediaPlayStatus *status);
-	void handleReceivePassThroughCommandClientDisappeared(const std::string &adapterAddress, const std::string &address);
+	void removeClientWatch(std::list<BluetoothClientWatch*> *clientWatch, const std::string& senderName);
 	void removeReceivePassThroughCommandWatchForDevice(const std::string &address);
-	void handleGetSupportedNotificationEventsClientDisappeared(const std::string &adapterAddress, const std::string &address);
+	void handleClientDisappeared(std::list<BluetoothClientWatch*>* clientWatch, const std::string senderName);
 	void removeGetSupportedNotificationEventsWatchForDevice(const std::string &address);
 
 	std::string mediaPlayStatusToString(BluetoothMediaPlayStatus::MediaPlayStatus status);
@@ -120,11 +139,11 @@ private:
 	std::string shuffleEnumToString(BluetoothPlayerApplicationSettingsShuffle shuffle);
 	std::string scanEnumToString(BluetoothPlayerApplicationSettingsScan scan);
 	void appendCurrentApplicationSettings(pbnjson::JValue &object);
-	void notifySubscribersAboutApplicationSettings();
-	void updateFromPlayerApplicationSettingsProperties(const BluetoothPlayerApplicationSettingsPropertiesList &properties);
 
-	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties, LS::Message &request, std::string &adapterAddress, BluetoothError error);
-
+	void handlePlayserApplicationSettingsPropertiesSet(BluetoothPlayerApplicationSettingsPropertiesList properties,
+			LS::Message &request, std::string &adapterAddress, std::string &address, BluetoothError error);
+	std::vector<std::string> *findRemoteFeatures(const std::string& adapterAddress, const std::string& address, std::string role);
+	void clearRemoteFeatures(const std::string &adapterAddress, const std::string &address);
 
 private:
 	std::string mEqualizer;
@@ -144,6 +163,7 @@ private:
 	std::string mTGRemoteFeatures;
 	std::string mRemoteFeaturesAddress;
 	BluetoothMediaMetaData *mMediaMetaData;
+	std::map<std::string, int> mRemoteVolumes;
 
 	BluetoothAvrcpSupportedNotificationEventList mSupportedNotificationEvents;
 	std::map<uint64_t, MediaRequest*> mMediaMetaDataRequests;
@@ -156,8 +176,17 @@ private:
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaMetaDataSubscriptions;
 	std::map<std::string, LS::SubscriptionPoint*> mGetMediaPlayStatusSubscriptions;
 
-	LS::SubscriptionPoint mGetPlayerApplicationSettingsSubscriptions;
-
+	std::list<BluetoothClientWatch*> mNotificationEventsWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetMediaMetaDataWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mMediaPlayStatusWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mPlayerApplicationSettingsWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mReceivePassThroughCommandWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetRemoteVolumeWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters;
+	/* Features supported by remote AVRCP target device */
+	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
+	/* Features supported by remote AVRCP controller device */
+	std::map<std::string, std::map<std::string, std::vector<std::string>>> mCTRemoteFeturesForMultipleAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H
