@@ -26,14 +26,14 @@ public:
 	void handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &sessionKey);
 private:
 	void notifyGetMasInstaces(pbnjson::JValue responseObj, const std::string &adapterAddress, const std::string &deviceAddress);
-	pbnjson::JValue appendMasInstances(const std::string &deviceAddress);
+	pbnjson::JValue appendMasInstances(const std::string &adapterAddress, const std::string &deviceAddress);
 	pbnjson::JValue appendMasInstanceSupportedtypes(std::vector<std::string> supportedtypes);
 	bool prepareGetMasInstances(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	bool prepareConnect(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	void markDeviceAsConnectedWithSessionId(const std::string &sessionId, const std::string &sessionKey);
 	void removeDeviceAsConnectedWithSessionId(const std::string &sessionId);
 	bool isDisconnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj);
-	bool isInstanceNameValid(const std::string &instance, const std::string &deviceAddress);
+	bool isInstanceNameValid(const std::string &instance, const std::string &adapterAddress, const std::string &deviceAddress);
 	bool isSessionIdValid(const std::string &sessionId);
 	std::string parseInstanceNameFromSessionKey(const std::string &sessionKey);
 	std::string parseAddressFromSessionKey(const std::string &sessionKey);

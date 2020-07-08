@@ -58,12 +58,12 @@ void BluetoothMapProfileService::initialize(const std::string &adapterAddress)
 		getImpl<BluetoothMapProfile>(adapterAddress)->registerObserver(this);
 }
 
-pbnjson::JValue BluetoothMapProfileService::appendMasInstances(const std::string &deviceAddress)
+pbnjson::JValue BluetoothMapProfileService::appendMasInstances(const std::string &adapterAddress, const std::string &deviceAddress)
 {
 	std::map<std::string, std::vector<std::string>> mapInstancesSupports;
 	pbnjson::JValue platformObjArr = pbnjson::Array();
 
-	BluetoothDevice *device = getManager()->findDevice(deviceAddress);
+	BluetoothDevice *device = getManager()->findDevice(adapterAddress, deviceAddress);
 	if (device)
 		mapInstancesSupports = device->getSupportedMessageTypes();
 
@@ -94,7 +94,7 @@ void BluetoothMapProfileService::notifyGetMasInstaces(pbnjson::JValue responseOb
 	responseObj.put("returnValue", true);
 	responseObj.put("adapterAddress", adapterAddress);
 	responseObj.put("address", deviceAddress);
-	responseObj.put("masInstances", appendMasInstances(deviceAddress));
+	responseObj.put("masInstances", appendMasInstances(adapterAddress, deviceAddress));
 }
 
 bool BluetoothMapProfileService::prepareGetMasInstances(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress)
@@ -118,17 +118,16 @@ bool BluetoothMapProfileService::prepareGetMasInstances(LS::Message &request, pb
 		return false;
 	}
 
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return false;
+
 	std::string address = requestObj["address"].asString();
 
-	if (!BluetoothProfileService::isDevicePaired(address))
+	if (!BluetoothProfileService::isDevicePaired(adapterAddress, address))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEV_NOT_PAIRED);
 		return false;
 	}
-
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return false;
-
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
 	{
@@ -160,11 +159,11 @@ bool BluetoothMapProfileService::getMASInstances(LSMessage &message)
 	return true;
 }
 
-bool BluetoothMapProfileService::isInstanceNameValid(const std::string &instance, const std::string &deviceAddress)
+bool BluetoothMapProfileService::isInstanceNameValid(const std::string &instance, const std::string &adapterAddress, const std::string &deviceAddress)
 {
 	std::map<std::string, std::vector<std::string>> mapInstancesSupports;
 
-	BluetoothDevice *device = getManager()->findDevice(deviceAddress);
+	BluetoothDevice *device = getManager()->findDevice(adapterAddress, deviceAddress);
 	if (device)
 	{
 		mapInstancesSupports = device->getSupportedMessageTypes();
@@ -207,7 +206,7 @@ bool BluetoothMapProfileService::connect(LSMessage &message)
 	if (requestObj.hasKey("instanceName"))
 	{
 		instanceName = requestObj["instanceName"].asString();
-		if( !isInstanceNameValid(instanceName, deviceAddress))
+		if( !isInstanceNameValid(instanceName, adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_MAP_INSTANCE_NOT_EXIST);
 			return true;
@@ -216,7 +215,7 @@ bool BluetoothMapProfileService::connect(LSMessage &message)
 	else
 	{
 		std::map<std::string, std::vector<std::string>> mapInstancesSupports;
-		BluetoothDevice *device = getManager()->findDevice(deviceAddress);
+		BluetoothDevice *device = getManager()->findDevice(adapterAddress, deviceAddress);
 		if (device)
 		{
 			mapInstancesSupports = device->getSupportedMessageTypes();
@@ -350,16 +349,16 @@ bool BluetoothMapProfileService::prepareConnect(LS::Message &request, pbnjson::J
 		return false;
 	}
 
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return false;
+
 	std::string address = requestObj["address"].asString();
 
-	if (!BluetoothProfileService::isDevicePaired(address))
+	if (!BluetoothProfileService::isDevicePaired(adapterAddress, address))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEV_NOT_PAIRED);
 		return false;
 	}
-
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return false;
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothMapProfile>(adapterAddress))

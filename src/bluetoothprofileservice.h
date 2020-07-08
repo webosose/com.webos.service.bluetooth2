@@ -91,6 +91,7 @@ protected:
 	std::map<std::string, BluetoothProfile*> mImpls;
 
 	virtual bool isDevicePaired(const std::string &address);
+	virtual bool isDevicePaired(const std::string &adapterAddress, const std::string &address);
 	virtual void notifyStatusSubscribers(const std::string &adapterAddress, const std::string &address, bool connected);
 	virtual bool isConnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj);
 	virtual void connectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress);

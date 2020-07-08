@@ -343,6 +343,15 @@ bool BluetoothProfileService::isDevicePaired(const std::string &address)
 	return device->getPaired();
 }
 
+bool BluetoothProfileService::isDevicePaired(const std::string &adapterAddress, const std::string &address)
+{
+	BluetoothDevice *device = getManager()->findDevice(adapterAddress, address);
+	if (!device)
+		return false;
+
+	return device->getPaired();
+}
+
 bool BluetoothProfileService::isConnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj)
 {
 	int parseError = 0;
