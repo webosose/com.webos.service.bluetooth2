@@ -102,6 +102,21 @@ void BluetoothGattProfileService::initialize()
 	}
 }
 
+void BluetoothGattProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+
+	if (impl)
+		getImpl<BluetoothGattProfile>(adapterAddress)->registerObserver(this);
+
+	for (auto obsIter = mGattObservers.begin(); obsIter != mGattObservers.end(); obsIter++)
+	{
+		(*obsIter)->initialize(impl);
+	}
+}
+
 void BluetoothGattProfileService::registerGattStatusObserver(BluetoothGattProfileService *statusObserver)
 {
 	mGattObservers.push_back(statusObserver);
@@ -488,13 +503,6 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_6(PROP(adapterAddress, string), PROP(serverId, string), PROP(service, string), PROP(type, string), ARRAY(includes, string),
 	                                         OBJARRAY(characteristics, OBJSCHEMA_5(PROP(characteristic, string),
 	                                                  OBJECT(value, OBJSCHEMA_3(PROP(value,string), PROP(number, integer), ARRAY(bytes, integer))),
@@ -527,8 +535,14 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 	// TODO: Change all inputs to lowercase
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
 
 	std::string serviceUuid = requestObj["service"].asString();
 	std::string type = requestObj["type"].asString();
@@ -631,7 +645,7 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto addServiceCallback = [this, requestMessage, serviceUuid](BluetoothError error) {
+	auto addServiceCallback = [this, requestMessage, serviceUuid, adapterAddress](BluetoothError error) {
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
 			BT_ERROR("ADD_SERVICE_FAILED", 0, "Add service %s fail code %d", serviceUuid.c_str(), error);
@@ -659,7 +673,7 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 		pbnjson::JValue responseObj = pbnjson::Object();
 		responseObj.put("returnValue", true);
 		responseObj.put("serverId", idToString(localServer->id));
-		responseObj.put("adapterAddress", getManager()->getAddress());
+		responseObj.put("adapterAddress", adapterAddress);
 
 		LSUtils::postToClient(requestMessage, responseObj);
 	};
@@ -672,7 +686,7 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 		{
 			if(iterServer.second->id == appId)
 			{
-				addLocalService(iterServer.first, gattService, addServiceCallback);
+				addLocalService(iterServer.first, gattService, addServiceCallback, adapterAddress);
 				return true;
 			}
 		}
@@ -680,7 +694,7 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 		return true;
 	}
 	else
-		addLocalService(gattService.getUuid(), gattService, addServiceCallback);
+		addLocalService(gattService.getUuid(), gattService, addServiceCallback, adapterAddress);
 
 	return true;
 }
@@ -691,12 +705,6 @@ bool BluetoothGattProfileService::removeService(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string), PROP(serverId, string), PROP(service, string)) REQUIRED_1(service));
 
@@ -717,8 +725,18 @@ bool BluetoothGattProfileService::removeService(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	std::string serviceUuid = requestObj["service"].asString();
-	auto removeServiceCallback = [this, requestMessage, serviceUuid](BluetoothError error) {
+	auto removeServiceCallback = [this, requestMessage, serviceUuid, adapterAddress](BluetoothError error) {
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -730,7 +748,7 @@ bool BluetoothGattProfileService::removeService(LSMessage &message)
 		BT_INFO("BLE", 0, "Remove service %s complete", serviceUuid.c_str());
 		pbnjson::JValue responseObj = pbnjson::Object();
 		responseObj.put("returnValue", true);
-		responseObj.put("adapterAddress", getManager()->getAddress());
+		responseObj.put("adapterAddress", adapterAddress);
 
 		LSUtils::postToClient(requestMessage, responseObj);
 	};
@@ -740,10 +758,10 @@ bool BluetoothGattProfileService::removeService(LSMessage &message)
 	if (requestObj.hasKey("serverId"))
 	{
 		uint16_t appId = idToInt(requestObj["serverId"].asString());
-		res = removeLocalService(appId, BluetoothUuid(serviceUuid));
+		res = removeLocalService(appId, BluetoothUuid(serviceUuid), adapterAddress);
 	}
 	else
-		res = removeLocalService(BluetoothUuid(serviceUuid));
+		res = removeLocalService(BluetoothUuid(serviceUuid), adapterAddress);
 
 	removeServiceCallback(res ? BLUETOOTH_ERROR_NONE : BLUETOOTH_ERROR_FAIL);
 
@@ -757,13 +775,7 @@ bool BluetoothGattProfileService::openServer(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
-	const std::string schema = STRICT_SCHEMA();
+	const std::string schema = STRICT_SCHEMA(PROPS_1(PROP(adapterAddress, string)));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -773,6 +785,16 @@ bool BluetoothGattProfileService::openServer(LSMessage &message)
 		else
 			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
 
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return true;
 	}
 
@@ -788,7 +810,7 @@ bool BluetoothGattProfileService::openServer(LSMessage &message)
 	}
 
 	LocalServer* newServer = new LocalServer;
-	if(!addLocalServer(BluetoothUuid(server), newServer))
+	if(!addLocalServer(BluetoothUuid(server), newServer, adapterAddress))
 	{
 		LSUtils::respondWithError(request, BLUETOOTH_ERROR_FAIL);
 		return true;
@@ -798,7 +820,7 @@ bool BluetoothGattProfileService::openServer(LSMessage &message)
 	pbnjson::JValue responseObj = pbnjson::Object();
 	responseObj.put("returnValue", true);
 	responseObj.put("serverId", idToString(newServer->id));
-	responseObj.put("adapterAddress", getManager()->getAddress());
+	responseObj.put("adapterAddress", adapterAddress);
 
 	LSUtils::postToClient(requestMessage, responseObj);
 
@@ -813,12 +835,6 @@ bool BluetoothGattProfileService::closeServer(LSMessage &message)
 	int parseError = 0;
 	std::string server;
 	uint16_t appId = 0;
-
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string), PROP(serverId, string)) REQUIRED_1(serverId));
 
@@ -840,16 +856,28 @@ bool BluetoothGattProfileService::closeServer(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	if (requestObj.hasKey("serverId"))
 	{
 		appId = idToInt(requestObj["serverId"].asString());
-		if(findLocalServer(appId) == nullptr)
+		std::string adptAddress1 = mServerAdapterMap[appId];
+
+		if(adptAddress1.compare(adapterAddress) != 0 || findLocalServer(appId) == nullptr)
 		{
 			BT_ERROR("GATT_FAILED_TO_CLOSE_SERVER", 0, "server %s not exist", server.c_str());
 			LSUtils::respondWithError(request, BT_ERR_GATT_REMOVE_SERVER_FAIL);
 			return true;
 		}
-		if(!removeLocalServer(appId))
+		if(!removeLocalServer(appId, adapterAddress))
 		{
 			LSUtils::respondWithError(requestMessage, BT_ERR_GATT_REMOVE_SERVER_FAIL);
 			return true;
@@ -859,7 +887,7 @@ bool BluetoothGattProfileService::closeServer(LSMessage &message)
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 	responseObj.put("returnValue", true);
-	responseObj.put("adapterAddress", getManager()->getAddress());
+	responseObj.put("adapterAddress", adapterAddress);
 
 	LSUtils::postToClient(requestMessage, responseObj);
 
@@ -2958,19 +2986,21 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 
 #define safe_callback(callback, ...) do { if (callback) callback(__VA_ARGS__); } while(0)
 
-bool BluetoothGattProfileService::addLocalServer(const BluetoothUuid applicationUuid, LocalServer* newServer)
+bool BluetoothGattProfileService::addLocalServer(const BluetoothUuid applicationUuid, LocalServer* newServer, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) getImpl->addApplication\n", __FUNCTION__, __LINE__);
-	uint16_t server_if = getImpl<BluetoothGattProfile>()->addApplication(BluetoothUuid(applicationUuid), ApplicationType::SERVER);
+	uint16_t server_if = getImpl<BluetoothGattProfile>(adapterAddress)->addApplication(BluetoothUuid(applicationUuid), ApplicationType::SERVER);
 	if (server_if == static_cast<uint16_t>(0))
 		return false;
 
 	newServer->id = server_if;
+	mServerAdapterMap.insert({newServer->id, adapterAddress});
 	mLocalServer.insert({applicationUuid, newServer});
 	return true;
 }
 
-void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicationUuid, const BluetoothGattService &service, BluetoothResultCallback callback)
+void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicationUuid, const BluetoothGattService &service, BluetoothResultCallback callback,
+	const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
 	auto server = findLocalServer(applicationUuid);
@@ -2980,13 +3010,23 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 		             "Server %s not exist",
 					 applicationUuid.toString().c_str());
 		LocalServer* newServer = new LocalServer;
-		if(!addLocalServer(applicationUuid, newServer))
+		if(!addLocalServer(applicationUuid, newServer, adapterAddress))
 		{
 			BT_ERROR("GATT_SERVICE_ALREADY_REGISTERED", 0, "addLocalServer is failed");
 			safe_callback(callback, BLUETOOTH_ERROR_FAIL);
 			return;
 		}
 		server = newServer;
+	}
+
+	std::string adptAddress1 = mServerAdapterMap[server->id];
+	if (adptAddress1.compare(adapterAddress) != 0)
+	{
+		BT_ERROR("GATT_SERVER_NOT_FOUND", 0,
+					 "Server %s not exist for %s adapterAddress",
+					 applicationUuid.toString().c_str(), adapterAddress);
+		safe_callback(callback, BLUETOOTH_ERROR_FAIL);
+		return;
 	}
 
 	if (service.getCharacteristics().size() == 0)
@@ -3019,7 +3059,7 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 	newService->desc = service; // TODO: Change to pointer assign
 	newService->addServiceCallback = callback;
 
-	auto addServiceCallback = [this, server, newService](BluetoothError error, uint16_t serviceId) {
+	auto addServiceCallback = [this, server, newService, adapterAddress](BluetoothError error, uint16_t serviceId) {
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3031,11 +3071,11 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 		BT_INFO("BLE", 0, "add serviceId:%d complete\n", serviceId);
 		newService->id = serviceId;
 		initCharacteristic(newService); // iterator
-		addLocalCharacteristic(server, newService);
+		addLocalCharacteristic(server, newService, adapterAddress);
 	};
 	BT_DEBUG("[%s](%d) getImpl->addService server:%d service:%s\n", __FUNCTION__, __LINE__, server->id, service.getUuid().toString().c_str());
 	// TODO: Needs server_if, uuid, handles, primary
-	getImpl<BluetoothGattProfile>()->addService(server->id, service, addServiceCallback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->addService(server->id, service, addServiceCallback);
 }
 
 void BluetoothGattProfileService::initCharacteristic(LocalService* newService)
@@ -3078,30 +3118,31 @@ bool BluetoothGattProfileService::hasNext(LocalService* newService)
 	return false;
 }
 
-void BluetoothGattProfileService::addLocalCharacteristic(LocalServer* server, LocalService* newService)
+void BluetoothGattProfileService::addLocalCharacteristic(LocalServer* server, LocalService* newService, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) getImpl->addCharacteristic\n", __FUNCTION__, __LINE__);
 	if (newService->descIt == newService->descriptors.end())
 	{
 		auto characteristic = *newService->charIt;
-		getImpl<BluetoothGattProfile>()->addCharacteristic(
+		getImpl<BluetoothGattProfile>(adapterAddress)->addCharacteristic(
 				server->id,
 				newService->id,
 				characteristic,
-				std::bind(&BluetoothGattProfileService::addCharacteristicCallback, this, server, newService, _1, _2));
+				std::bind(&BluetoothGattProfileService::addCharacteristicCallback, this, server, newService, _1, _2, adapterAddress));
 	}
 	else
 	{
 		auto descriptor = *newService->descIt;
-		getImpl<BluetoothGattProfile>()->addDescriptor(
+		getImpl<BluetoothGattProfile>(adapterAddress)->addDescriptor(
 				server->id,
 				newService->id,
 				descriptor,
-				std::bind(&BluetoothGattProfileService::addCharacteristicCallback, this, server, newService, _1, _2));
+				std::bind(&BluetoothGattProfileService::addCharacteristicCallback, this, server, newService, _1, _2, adapterAddress));
 	}
 }
 
-void BluetoothGattProfileService::addCharacteristicCallback(LocalServer* server, LocalService* newService, BluetoothError error, uint16_t charId)
+void BluetoothGattProfileService::addCharacteristicCallback(LocalServer* server, LocalService* newService, BluetoothError error, uint16_t charId,
+	const std::string &adapterAddress)
 {
 	BT_INFO("BLE", 0, "[%s](%d) called\n", __FUNCTION__, __LINE__);
 	auto& service = newService->desc;
@@ -3149,7 +3190,7 @@ void BluetoothGattProfileService::addCharacteristicCallback(LocalServer* server,
 
 	if (hasNext(newService))
 	{
-		addLocalCharacteristic(server, newService);
+		addLocalCharacteristic(server, newService, adapterAddress);
 		return;
 	}
 
@@ -3162,30 +3203,10 @@ void BluetoothGattProfileService::addCharacteristicCallback(LocalServer* server,
 		safe_callback(newService->addServiceCallback, serviceError);
 	};
 
-	getImpl<BluetoothGattProfile>()->startService(server->id, newService->id, BluetoothGattTransportMode::GATT_TRANSPORT_MODE_LE_BR_EDR , callback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->startService(server->id, newService->id, BluetoothGattTransportMode::GATT_TRANSPORT_MODE_LE_BR_EDR , callback);
 }
 
-bool BluetoothGattProfileService::removeLocalServer(BluetoothUuid Uuid)
-{
-	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
-	auto server = findLocalServer(Uuid);
-	if (server == nullptr)
-	{
-		BT_ERROR("INVALID_STATE", 0, "Didn't found server item %s", Uuid.toString().c_str());
-		return false;
-	}
-
-	BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-	if(!getImpl<BluetoothGattProfile>()->removeApplication(server->id, ApplicationType::SERVER))
-		server->removeAllLocalService();
-	else
-		delete server;
-
-	mLocalServer.erase(Uuid);
-	return true;
-}
-
-bool BluetoothGattProfileService::removeLocalServer(uint16_t serverId)
+bool BluetoothGattProfileService::removeLocalServer(uint16_t serverId, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
 	auto server = findLocalServer(serverId);
@@ -3200,7 +3221,7 @@ bool BluetoothGattProfileService::removeLocalServer(uint16_t serverId)
 		if(serverIter.second->id == serverId)
 		{
 			BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-			if(!getImpl<BluetoothGattProfile>()->removeApplication(server->id, ApplicationType::SERVER))
+			if(!getImpl<BluetoothGattProfile>(adapterAddress)->removeApplication(server->id, ApplicationType::SERVER))
 				server->removeAllLocalService();
 			else
 				delete server;
@@ -3214,12 +3235,17 @@ bool BluetoothGattProfileService::removeLocalServer(uint16_t serverId)
 	return true;
 }
 
-bool BluetoothGattProfileService::removeLocalService(uint16_t serverId, const BluetoothUuid &uuid)
+bool BluetoothGattProfileService::removeLocalService(uint16_t serverId, const BluetoothUuid &uuid,
+	const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
 
 	auto server = findLocalServer(serverId);
 	if (server == nullptr)
+		return false;
+
+	std::string adptAddress1 = mServerAdapterMap[server->id];
+	if(adptAddress1.compare(adapterAddress) != 0)
 		return false;
 
 	auto service = server->findLocalService(uuid);
@@ -3230,12 +3256,12 @@ bool BluetoothGattProfileService::removeLocalService(uint16_t serverId, const Bl
 		server->removeLocalService(uuid);
 	};
 	BT_DEBUG("[%s](%d) getImpl->removeService\n", __FUNCTION__, __LINE__);
-	getImpl<BluetoothGattProfile>()->removeService(server->id, service->id, callback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->removeService(server->id, service->id, callback);
 
 	return true;
 }
 
-bool BluetoothGattProfileService::removeLocalService(const BluetoothUuid &uuid)
+bool BluetoothGattProfileService::removeLocalService(const BluetoothUuid &uuid, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
 	for(auto serverIter : mLocalServer)
@@ -3248,11 +3274,15 @@ bool BluetoothGattProfileService::removeLocalService(const BluetoothUuid &uuid)
 		if (service == nullptr)
 			continue;
 
+		std::string adptAddress1 = mServerAdapterMap[server->id];
+		if(adptAddress1.compare(adapterAddress) != 0)
+			return false;
+
 		auto callback = [this, server, uuid](BluetoothError error) {
 			server->removeLocalService(uuid);
 		};
 		BT_DEBUG("[%s](%d) getImpl->removeService\n", __FUNCTION__, __LINE__);
-		getImpl<BluetoothGattProfile>()->removeService(serverIter.second->id, service->id, callback);
+		getImpl<BluetoothGattProfile>(adapterAddress)->removeService(serverIter.second->id, service->id, callback);
 		return true;
 	}
 	return false;

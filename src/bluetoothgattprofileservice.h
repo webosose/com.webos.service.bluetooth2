@@ -304,17 +304,15 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 	};
 
 	// TODO: move to LocalService
-	bool addLocalServer(const BluetoothUuid applicationUuid, LocalServer* newServer);
-	void addLocalService(const BluetoothUuid applicationUuid, const BluetoothGattService &service, BluetoothResultCallback callback);
-	void addLocalService(const BluetoothGattService &service, BluetoothResultCallback callback);
+	bool addLocalServer(const BluetoothUuid applicationUuid, LocalServer* newServer, const std::string &adapterAddress);
+	void addLocalService(const BluetoothUuid applicationUuid, const BluetoothGattService &service, BluetoothResultCallback callback, const std::string &adapterAddress);
 	void initCharacteristic(LocalService* newService); // TODO: Change name
 	bool hasNext(LocalService* newService);
-	void addLocalCharacteristic(LocalServer* server, LocalService* newService);
-	void addCharacteristicCallback(LocalServer* server, LocalService* newService, BluetoothError error, uint16_t charId);
-	bool removeLocalServer(BluetoothUuid Uuid);
-	bool removeLocalServer(uint16_t appId);
-	bool removeLocalService(uint16_t serverId, const BluetoothUuid &uuid);
-	bool removeLocalService(const BluetoothUuid &uuid);
+	void addLocalCharacteristic(LocalServer* server, LocalService* newService, const std::string &adapterAddress);
+	void addCharacteristicCallback(LocalServer* server, LocalService* newService, BluetoothError error, uint16_t charId, const std::string &adapterAddress);
+	bool removeLocalServer(uint16_t appId, const std::string &adapterAddress);
+	bool removeLocalService(uint16_t serverId, const BluetoothUuid &uuid, const std::string &adapterAddress);
+	bool removeLocalService(const BluetoothUuid &uuid, const std::string &adapterAddress);
 
 	bool isLocalServiceRegistered(const BluetoothUuid &uuid)
 	{
@@ -369,6 +367,7 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 
 	std::unordered_map<BluetoothUuid, LocalServer*> mLocalServer;
 	std::unordered_map<uint16_t, connectedDeviceInfo*> mConnectedDevices;
+	std::unordered_map<uint16_t, std::string> mServerAdapterMap;
 public:
 	BluetoothGattProfileService(BluetoothManagerService *manager);
 	BluetoothGattProfileService(BluetoothManagerService *manager, const std::string &name, const std::string &uuid);
@@ -377,6 +376,7 @@ public:
 	static uint16_t nextClientId();
 	virtual void initialize();
 	virtual void initialize(BluetoothProfile *impl) {};
+	void initialize(const std::string &adapterAddress);
 	bool openServer(LSMessage &message);
 	bool closeServer(LSMessage &message);
 	bool discoverServices(LSMessage &message);
