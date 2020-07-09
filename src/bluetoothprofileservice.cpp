@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -841,7 +841,13 @@ bool BluetoothProfileService::disable(LSMessage &message)
 	std::string adapterAddress;
 	int parseError = 0;
 
-	if (!mImpl)
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+	{
+		return true;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return true;
@@ -878,7 +884,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto disableCallback = [this, requestMessage, adapterAddress](BluetoothError error) {
+	auto disableCallback = [this, impl, requestMessage, adapterAddress](BluetoothError error) {
 		LS::Message request(requestMessage);
 		mEnabledRoles.pop_back();
 
@@ -891,7 +897,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 		}
 		if(mEnabledRoles.size() > 0)
 		{
-			mImpl->disable(mEnabledRoles.back(), mCallback);
+			impl->disable(mEnabledRoles.back(), mCallback);
 			return;
 		}
 		pbnjson::JValue responseObj = pbnjson::Object();
@@ -910,7 +916,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 		return true;
 	}
 	mCallback = disableCallback;
-	mImpl->disable(mEnabledRoles.back(), mCallback);
+	impl->disable(mEnabledRoles.back(), mCallback);
 
 	return true;
 }
