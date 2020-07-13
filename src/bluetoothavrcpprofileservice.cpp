@@ -323,12 +323,6 @@ bool BluetoothAvrcpProfileService::supplyMediaMetaData(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothAvrcpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(requestId, string),
 		OBJECT(metaData, OBJSCHEMA_7(PROP(title, string), PROP(artist, string), PROP(album, string), PROP(genre, string),
 			PROP(mediaNumber, integer), PROP(totalMediaCount, integer), PROP(duration, integer))),
@@ -357,6 +351,13 @@ bool BluetoothAvrcpProfileService::supplyMediaMetaData(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothAvrcpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	std::string requestIdStr = requestObj["requestId"].asString();
 	MediaRequest *mediaRequest = findMediaRequest(true, requestIdStr);
 	BluetoothAvrcpRequestId requestId = findRequestId(true, requestIdStr);
@@ -383,7 +384,7 @@ bool BluetoothAvrcpProfileService::supplyMediaMetaData(LSMessage &message)
 	};
 
 	BT_INFO("AVRCP", 0, "Service calls SIL API : supplyMediaMetaData");
-	getImpl<BluetoothAvrcpProfile>()->supplyMediaMetaData(requestId, metaData, requestCallback);
+	getImpl<BluetoothAvrcpProfile>(adapterAddress)->supplyMediaMetaData(requestId, metaData, requestCallback);
 	deleteMediaRequest(true, requestIdStr);
 	deleteMediaRequestId(true, requestIdStr);
 
@@ -435,12 +436,6 @@ bool BluetoothAvrcpProfileService::supplyMediaPlayStatus(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothAvrcpProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(requestId, string),
 		OBJECT(playbackStatus, OBJSCHEMA_3(PROP(duration, integer), PROP(position, integer), PROP(status, string))),
 		PROP(adapterAddress, string))
@@ -467,6 +462,13 @@ bool BluetoothAvrcpProfileService::supplyMediaPlayStatus(LSMessage &message)
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && getImpl<BluetoothAvrcpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
 
 	std::string requestIdStr = requestObj["requestId"].asString();
 	MediaRequest *mediaRequest = findMediaRequest(false, requestIdStr);
@@ -496,7 +498,7 @@ bool BluetoothAvrcpProfileService::supplyMediaPlayStatus(LSMessage &message)
 	};
 
 	BT_INFO("AVRCP", 0, "Service calls SIL API : supplyMediaPlayStatus");
-	getImpl<BluetoothAvrcpProfile>()->supplyMediaPlayStatus(requestId, playStatus, requestCallback);
+	getImpl<BluetoothAvrcpProfile>(adapterAddress)->supplyMediaPlayStatus(requestId, playStatus, requestCallback);
 	deleteMediaRequest(false, requestIdStr);
 	deleteMediaRequestId(false, requestIdStr);
 
