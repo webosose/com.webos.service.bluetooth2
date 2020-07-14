@@ -75,6 +75,7 @@ public:
 	bool getPlayerInfo(LSMessage &message);
 	/* AVRCP CT browse APIs */
 	bool getCurrentFolder(LSMessage &message);
+	bool getNumberOfItems(LSMessage &message);
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);

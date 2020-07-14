@@ -74,6 +74,7 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, browse)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getCurrentFolder)
+		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getNumberOfItems)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/avrcp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -2765,6 +2766,72 @@ bool BluetoothAvrcpProfileService::getCurrentFolder(LSMessage &message){
 	responseObj.put("folderName", currentFolderName);
 
 	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
+
+bool BluetoothAvrcpProfileService::getNumberOfItems(LSMessage &message)
+{
+	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string), PROP(address, string)) REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string deviceAddress;
+	deviceAddress = convertToLower(requestObj["address"].asString());
+
+	BluetoothAvrcpProfile *impl = getImpl<BluetoothAvrcpProfile>(adapterAddress);
+
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto numberOfItemsCallback = [this, requestMessage, &adapterAddress, &deviceAddress](
+									 BluetoothError error, const uint32_t numberOfItems) {
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(requestMessage, error);
+			return;
+		}
+		pbnjson::JValue responseObj = pbnjson::Object();
+
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", deviceAddress);
+		responseObj.put("returnValue", true);
+		responseObj.put("numberOfItems", (int32_t)numberOfItems);
+
+		LSUtils::postToClient(requestMessage, responseObj);
+		LSMessageUnref(requestMessage);
+	};
+	impl->getNumberOfItems(numberOfItemsCallback);
 
 	return true;
 }
