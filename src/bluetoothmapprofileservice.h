@@ -25,6 +25,7 @@ public:
 	bool disconnect(LSMessage &message);
 	bool getStatus(LSMessage &message);
 	bool getMessageFilters(LSMessage &message);
+	bool getFolderList(LSMessage &message);
 	void handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &sessionKey);
 	void propertiesChanged(const std::string &adapterAddress, const std::string &sessionKey, BluetoothPropertiesList properties);
 private:
@@ -50,6 +51,8 @@ private:
 	void notifyGetStatusSubscribers(const std::string &adapterAddress, const std::string &sessionKey);
 	std::string getSessionId(const std::string &adapterAddress, const std::string &sessionKey);
 	void removeConnectWatchForDevice(const std::string &address, const std::string &adapterAddress, const std::string &key, const std::string &sessionId, bool disconnected, bool remoteDisconnect);
+	bool isGetFolderListSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj);
+	void getFolderCallback(LS::Message &request,const std::string& address, const std::string& sessionKey,const std::string& adapterAddress,BluetoothError error,std::vector<std::string>& folderList);
 	std::map<std::string, std::map<std::string, std::string>> mConnectedDevicesForMultipleAdaptersWithSessionKey;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mMapGetStatusSubscriptionsForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mConnectWatchesForMultipleAdaptersWithSessionKey;

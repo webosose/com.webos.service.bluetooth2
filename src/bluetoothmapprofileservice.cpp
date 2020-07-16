@@ -24,6 +24,8 @@
 #include "utils.h"
 #include "config.h"
 
+using namespace std::placeholders;
+
 BluetoothMapProfileService::BluetoothMapProfileService(BluetoothManagerService *manager) :
         BluetoothProfileService(manager, "MAP", "00001132-0000-1000-8000-00805f9b34fb")
 {
@@ -33,6 +35,7 @@ BluetoothMapProfileService::BluetoothMapProfileService(BluetoothManagerService *
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getMASInstances)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getStatus)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getMessageFilters)
+		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getFolderList)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/map", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -807,4 +810,93 @@ pbnjson::JValue BluetoothMapProfileService::createJsonFilterList(const std::list
 		platformObjArr.append(data->c_str());
 	}
 	return platformObjArr;
+}
+
+bool BluetoothMapProfileService::getFolderList(LSMessage &message)
+{
+	BT_INFO("MAP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+
+	if (!isGetFolderListSchemaAvailable(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMapProfile *impl = getImpl<BluetoothMapProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string address = requestObj["address"].asString();
+	std::string sessionId = requestObj["sessionId"].asString();
+	std::string sessionKey;
+	if(!isSessionIdValid(adapterAddress, address, sessionId, sessionKey))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_NOT_EXIST);
+		return true;
+	}
+
+	uint16_t startIndex = 0;
+	if (requestObj.hasKey("startOffset"))
+		startIndex = (uint16_t)requestObj["startOffset"].asNumber<int32_t>();
+
+	uint16_t maxListCount = 1024;
+	if (requestObj.hasKey("maxListCount"))
+		maxListCount = (uint16_t)requestObj["maxListCount"].asNumber<int32_t>();
+
+	if (maxListCount > 1024)
+		maxListCount = 1024;
+
+	impl->getFolderList(sessionKey, sessionId, startIndex, maxListCount,
+		std::bind(&BluetoothMapProfileService::getFolderCallback,
+			this,request,address, sessionKey, adapterAddress,_1,_2));
+	return true;
+}
+
+void BluetoothMapProfileService::getFolderCallback(LS::Message &request,const std::string& address, const std::string& sessionKey,const std::string& adapterAddress,BluetoothError error,std::vector<std::string>& folderList)
+{
+	if (error != BLUETOOTH_ERROR_NONE)
+	{
+		LSUtils::respondWithError(request, error);
+		LSMessageUnref(request.get());
+		return;
+	}
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("instanceName", parseInstanceNameFromSessionKey(sessionKey));
+	pbnjson::JValue folderValue = pbnjson::Array();
+	for(auto folderName : folderList)
+		folderValue.append(folderName.c_str());
+
+	responseObj.put("folders", folderValue);
+	LSUtils::postToClient(request, responseObj);
+}
+
+bool BluetoothMapProfileService::isGetFolderListSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_5(PROP(address, string), PROP(adapterAddress, string), PROP(sessionId, string),
+								PROP(startOffset, integer),PROP(maxListCount, integer))  REQUIRED_2(address,sessionId));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else if (!requestObj.hasKey("sessionId"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+	return true;
 }
