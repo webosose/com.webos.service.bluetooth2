@@ -292,17 +292,8 @@ bool BluetoothPbapProfileService::prepareSetPhoneBook(LS::Message &request, pbnj
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
@@ -342,17 +333,8 @@ bool BluetoothPbapProfileService::prepareGetSize(LS::Message &request, pbnjson::
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
@@ -392,17 +374,8 @@ bool BluetoothPbapProfileService::prepareGetvCardFilters(LS::Message &request, p
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
@@ -765,18 +738,11 @@ bool BluetoothPbapProfileService::prepareVCardListing(LS::Message &request, pbnj
 
 		return false;
 	}
-	std::string adapterAddress;
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
 
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
+
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
 	{
@@ -844,17 +810,8 @@ bool BluetoothPbapProfileService::prepareSearchPhoneBook(LS::Message &request, p
 	}
 
 	std::string adapterAddress;
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
@@ -987,17 +944,8 @@ bool BluetoothPbapProfileService::prepareGetPhoneBookProperties(LS::Message &req
 	}
 
 	std::string adapterAddress;
-	if(requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
@@ -1364,17 +1312,8 @@ bool BluetoothPbapProfileService::preparePullVcard(LS::Message &request, pbnjson
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
-		adapterAddress = requestObj["adapterAddress"].asString();
-	else
-		adapterAddress = getManager()->getAddress();
-
-	auto adapter = getManager()->getAdapter(adapterAddress);
-	if (!adapter)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return false;
-	}
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
