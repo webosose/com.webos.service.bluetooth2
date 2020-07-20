@@ -44,7 +44,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_ENABLED, "Tethering is already enabled"},
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"},
 	{BLUETOOTH_ERROR_ALREADY_CONNECTED_ONE_DEVICE, "One headset already connected to this adapter please check in device/getStatus"},
-	{BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE, "No folder is selected"}
+	{BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE, "No folder is selected"},
+	{BLUETOOTH_ERROR_MAP_FOLDER_NOT_FOUND, "Requested folder is not found"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -244,7 +245,8 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_AVRCP_NO_CONNECTED_DEVICES, "No AVRCP connected device exist"},
 	{BT_ERR_MAP_INSTANCE_NOT_EXIST, "The supplied instance does not exist"},
 	{BT_ERR_MAP_SESSION_ID_NOT_EXIST, "The supplied session id does not exist"},
-	{BT_ERR_MAP_SESSION_ID_PARAM_MISSING, "Required 'sessionId' parameter is not supplied"}
+	{BT_ERR_MAP_SESSION_ID_PARAM_MISSING, "Required 'sessionId' parameter is not supplied"},
+	{BT_ERR_MAP_FOLDER_PARAM_MISSING,"Required 'folder' parameter is not supplied"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)

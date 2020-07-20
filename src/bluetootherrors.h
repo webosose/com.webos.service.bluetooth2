@@ -220,6 +220,7 @@ enum BluetoothErrorCode
 	BT_ERR_MAP_INSTANCE_NOT_EXIST = 296,
 	BT_ERR_MAP_SESSION_ID_NOT_EXIST = 297,
 	BT_ERR_MAP_SESSION_ID_PARAM_MISSING = 298,
+	BT_ERR_MAP_FOLDER_PARAM_MISSING = 299
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode);

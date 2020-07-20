@@ -36,6 +36,7 @@ BluetoothMapProfileService::BluetoothMapProfileService(BluetoothManagerService *
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getStatus)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getMessageFilters)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getFolderList)
+		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, setFolder)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/map", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -863,7 +864,6 @@ void BluetoothMapProfileService::getFolderCallback(LS::Message &request,const st
 	if (error != BLUETOOTH_ERROR_NONE)
 	{
 		LSUtils::respondWithError(request, error);
-		LSMessageUnref(request.get());
 		return;
 	}
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -899,4 +899,77 @@ bool BluetoothMapProfileService::isGetFolderListSchemaAvailable(LS::Message &req
 		return false;
 	}
 	return true;
+}
+bool BluetoothMapProfileService::setFolder(LSMessage &message)
+{
+	BT_INFO("MAP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+
+	if (!isSetFolderSchemaAvailable(request, requestObj))
+		return true;
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMapProfile *impl = getImpl<BluetoothMapProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string address = requestObj["address"].asString();
+	std::string sessionId = requestObj["sessionId"].asString();
+	std::string sessionKey;
+	if(!isSessionIdValid(adapterAddress, address, sessionId, sessionKey))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_NOT_EXIST);
+		return true;
+	}
+
+	std::string folder = requestObj["folder"].asString();
+	impl->setFolder(sessionKey, sessionId,folder,std::bind(&BluetoothMapProfileService::setFolderCallback,
+			this,request,address, sessionKey, adapterAddress,_1));
+	return true;
+}
+
+bool BluetoothMapProfileService::isSetFolderSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(address, string), PROP(adapterAddress, string), PROP(sessionId, string),
+								PROP(folder, string))  REQUIRED_3(address,sessionId,folder));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else if (!requestObj.hasKey("sessionId"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_PARAM_MISSING);
+		else if (!requestObj.hasKey("folder"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_FOLDER_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+	return true;
+}
+
+void BluetoothMapProfileService::setFolderCallback(LS::Message &request,const std::string& address, const std::string& sessionKey,const std::string& adapterAddress,BluetoothError error)
+{
+	if (error != BLUETOOTH_ERROR_NONE)
+	{
+		LSUtils::respondWithError(request, error);
+		return;
+	}
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("instanceName", parseInstanceNameFromSessionKey(sessionKey));
+	LSUtils::postToClient(request, responseObj);
 }
