@@ -209,6 +209,8 @@
         "com.webos.service.bluetooth2/avrcp/internal/getRemoteFeatures",
         "com.webos.service.bluetooth2/avrcp/internal/getSupportedNotificationEvents",
         "com.webos.service.bluetooth2/avrcp/browse/getCurrentFolder",
+        "com.webos.service.bluetooth2/avrcp/browse/getNumberOfItems",
+        "com.webos.service.bluetooth2/avrcp/browse/getFolderItems",
         "com.webos.service.bluetooth2/gatt/addService",
         "com.webos.service.bluetooth2/gatt/closeServer",
         "com.webos.service.bluetooth2/gatt/connect",

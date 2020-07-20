@@ -76,6 +76,7 @@ public:
 	/* AVRCP CT browse APIs */
 	bool getCurrentFolder(LSMessage &message);
 	bool getNumberOfItems(LSMessage &message);
+	bool getFolderItems(LSMessage &message);
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
@@ -156,6 +157,9 @@ private:
 						 const std::string &address);
 	void clearCurrentFolder(const std::string &adapterAddress,
 							const std::string &address);
+	void clearPlayStatus(const std::string &adapterAddress,
+						 const std::string &address);
+	std::string folderItemTypeEnumToString(BluetoothAvrcpItemType type);
 
 private:
 	std::string mEqualizer;
@@ -205,7 +209,7 @@ private:
 	/* Playerinfo list. map<adapterAddress, map<deviceAddress, playerInfoList> */
 	std::map<std::string, std::map<std::string, BluetothPlayerInfoList>> mPlayerInfoListForMultipleAdapters;
 	std::map<std::string, std::map<std::string, std::string>> mCurrentFolderForMultipleAdapters;
-
+	std::map<std::string, std::map<std::string, BluetoothMediaPlayStatus> > mPlayStatusForMultipleAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H

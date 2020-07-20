@@ -75,6 +75,7 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, browse)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getCurrentFolder)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getNumberOfItems)
+		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getFolderItems)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/avrcp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -231,6 +232,7 @@ void BluetoothAvrcpProfileService::propertiesChanged(const std::string &adapterA
 		clearRemoteFeatures(adapterAddress, address);
 		clearPlayerInfo(adapterAddress, address);
 		clearCurrentFolder(adapterAddress, address);
+		clearPlayStatus(adapterAddress, address);
 	}
 }
 
@@ -276,6 +278,20 @@ void BluetoothAvrcpProfileService::clearCurrentFolder(
 	if ((listIter->second).empty())
 	{
 		mCurrentFolderForMultipleAdapters.erase(adapterAddress);
+	}
+}
+
+void BluetoothAvrcpProfileService::clearPlayStatus(
+	const std::string &adapterAddress, const std::string &address)
+{
+	auto listIter = mPlayStatusForMultipleAdapters.find(adapterAddress);
+	if (listIter != mPlayStatusForMultipleAdapters.end())
+	{
+		(listIter->second).erase(address);
+	}
+	if ((listIter->second).empty())
+	{
+		mPlayStatusForMultipleAdapters.erase(adapterAddress);
 	}
 }
 
@@ -1336,6 +1352,22 @@ bool BluetoothAvrcpProfileService::getMediaPlayStatus(LSMessage &message)
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
+	auto adapterIter = mPlayStatusForMultipleAdapters.find(adapterAddress);
+	if (adapterIter != mPlayStatusForMultipleAdapters.end())
+	{
+		auto deviceIter = (adapterIter->second).find(deviceAddress);
+		if (deviceIter != (adapterIter->second).end())
+		{
+			BluetoothMediaPlayStatus playStatus = deviceIter->second;
+			pbnjson::JValue playStatusObj = pbnjson::Object();
+			playStatusObj.put("duration", (int32_t)playStatus.getDuration());
+			playStatusObj.put("position", (int32_t)playStatus.getPosition());
+			playStatusObj.put("status", mediaPlayStatusToString(playStatus.getStatus()));
+
+			responseObj.put("playbackStatus", playStatusObj);
+		}
+	}
+
 	responseObj.put("subscribed", subscribed);
 	responseObj.put("returnValue", true);
 	responseObj.put("adapterAddress", adapterAddress);
@@ -1893,25 +1925,47 @@ void BluetoothAvrcpProfileService::mediaPlayStatusReceived(const BluetoothMediaP
 	const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
-	pbnjson::JValue object = pbnjson::Object();
 
-	object.put("returnValue", true);
-	object.put("subscribed", true);
-	object.put("address", address);
-	object.put("adapterAddress", adapterAddress);
-
-	pbnjson::JValue playStatusObj = pbnjson::Object();
-	playStatusObj.put("duration", (int32_t)playStatus.getDuration());
-	playStatusObj.put("position", (int32_t)playStatus.getPosition());
-	playStatusObj.put("status", mediaPlayStatusToString(playStatus.getStatus()));
-
-	object.put("playbackStatus", playStatusObj);
-
+	auto adapterIter = mPlayStatusForMultipleAdapters.find(adapterAddress);
+	if (adapterIter == mPlayStatusForMultipleAdapters.end())
+	{
+		std::map<std::string, BluetoothMediaPlayStatus> playStatusDevice;
+		playStatusDevice.insert(
+			std::pair<std::string, BluetoothMediaPlayStatus>(address, playStatus));
+		mPlayStatusForMultipleAdapters.insert(
+			std::pair<std::string,
+					  std::map<std::string, BluetoothMediaPlayStatus> >(adapterAddress, playStatusDevice));
+	}
+	else
+	{
+		auto deviceIter = (adapterIter->second).find(address);
+		if (deviceIter == (adapterIter->second).end())
+		{
+			(adapterIter->second).insert(std::pair<std::string, BluetoothMediaPlayStatus>(address, playStatus));
+		}
+		else
+		{
+			deviceIter->second = playStatus;
+		}
+	}
 	for (auto watch : mMediaPlayStatusWatchesForMultipleAdapters)
 	{
 		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
 			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
 		{
+			pbnjson::JValue object = pbnjson::Object();
+
+			object.put("returnValue", true);
+			object.put("subscribed", true);
+			object.put("address", address);
+			object.put("adapterAddress", adapterAddress);
+
+			pbnjson::JValue playStatusObj = pbnjson::Object();
+			playStatusObj.put("duration", (int32_t)playStatus.getDuration());
+			playStatusObj.put("position", (int32_t)playStatus.getPosition());
+			playStatusObj.put("status", mediaPlayStatusToString(playStatus.getStatus()));
+
+			object.put("playbackStatus", playStatusObj);
 			LSUtils::postToClient(watch->getMessage(), object);
 		}
 	}
@@ -2645,13 +2699,7 @@ void BluetoothAvrcpProfileService::currentFolderReceived(
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
-	pbnjson::JValue object = pbnjson::Object();
-
-	object.put("returnValue", true);
-	object.put("subscribed", true);
-	object.put("address", address);
-	object.put("adapterAddress", adapterAddress);
-	object.put("folderName", currentFolder);
+	bool sendResponse = true;
 
 	auto currentFolderIter = mCurrentFolderForMultipleAdapters.find(adapterAddress);
 	if (currentFolderIter == mCurrentFolderForMultipleAdapters.end())
@@ -2672,15 +2720,29 @@ void BluetoothAvrcpProfileService::currentFolderReceived(
 		}
 		else
 		{
-			currentFolderIterDevice->second = currentFolder;
+			if (currentFolderIterDevice->second != currentFolder)
+				currentFolderIterDevice->second = currentFolder;
+			else
+				sendResponse = false;
 		}
 	}
-	for (auto watch : mGetCurrentFolderWatchesForMultipleAdapters)
+
+	if (sendResponse)
 	{
-		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
-			convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+		for (auto watch : mGetCurrentFolderWatchesForMultipleAdapters)
 		{
-			LSUtils::postToClient(watch->getMessage(), object);
+			if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()) &&
+				convertToLower(address) == convertToLower(watch->getDeviceAddress()))
+			{
+				pbnjson::JValue object = pbnjson::Object();
+
+				object.put("returnValue", true);
+				object.put("subscribed", true);
+				object.put("address", address);
+				object.put("adapterAddress", adapterAddress);
+				object.put("folderName", currentFolder);
+				LSUtils::postToClient(watch->getMessage(), object);
+			}
 		}
 	}
 }
@@ -2824,4 +2886,116 @@ bool BluetoothAvrcpProfileService::getNumberOfItems(LSMessage &message)
 	impl->getNumberOfItems(numberOfItemsCallback);
 
 	return true;
+}
+
+bool BluetoothAvrcpProfileService::getFolderItems(LSMessage &message)
+{
+	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(adapterAddress, string),
+													 PROP(address, string), PROP(startIndex, integer),
+													 PROP(endIndex, integer)) REQUIRED_3(address, startIndex, endIndex));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
+		else if (!requestObj.hasKey("startIndex"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_START_INDEX_PARAM_MISSING);
+		else if (!requestObj.hasKey("endIndex"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_END_INDEX_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothAvrcpProfile *impl = getImpl<BluetoothAvrcpProfile>(adapterAddress);
+
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string deviceAddress;
+	deviceAddress = convertToLower(requestObj["address"].asString());
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto folderItemsCallback = [this, requestMessage, adapterAddress, deviceAddress](
+								   BluetoothError error, const BluetoothFolderItemList &folderItems) {
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(requestMessage, error);
+			return;
+		}
+		pbnjson::JValue responseObj = pbnjson::Object();
+		pbnjson::JValue itemArray = pbnjson::Array();
+
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", deviceAddress);
+		responseObj.put("returnValue", true);
+		for (auto item : folderItems)
+		{
+			pbnjson::JValue itemObj = pbnjson::Object();
+			itemObj.put("name", item.getName());
+			itemObj.put("path", item.getPath());
+			itemObj.put("type", folderItemTypeEnumToString(item.getType()));
+			itemObj.put("playable", item.getPlayable());
+			if (BluetoothAvrcpItemType::ITEM_TYPE_FOLDER != item.getType())
+			{
+				pbnjson::JValue metadataObj = pbnjson::Object();
+				BluetoothMediaMetaData mediaMetadata = item.getMetadata();
+
+				metadataObj.put("title", mediaMetadata.getTitle());
+				metadataObj.put("artist", mediaMetadata.getArtist());
+				metadataObj.put("album", mediaMetadata.getAlbum());
+				metadataObj.put("genre", mediaMetadata.getGenre());
+				metadataObj.put("trackNumber", (int32_t)mediaMetadata.getTrackNumber());
+				metadataObj.put("trackCount", (int32_t)mediaMetadata.getTrackCount());
+				metadataObj.put("duration", (int32_t)mediaMetadata.getDuration());
+
+				itemObj.put("metaData", metadataObj);
+			}
+			itemArray.append(itemObj);
+		}
+		responseObj.put("folderItems", itemArray);
+
+		LSUtils::postToClient(requestMessage, responseObj);
+		LSMessageUnref(requestMessage);
+	};
+	impl->getFolderItems(requestObj["startIndex"].asNumber<int32_t>(),
+						 requestObj["endIndex"].asNumber<int32_t>(), folderItemsCallback);
+
+	return true;
+}
+
+std::string BluetoothAvrcpProfileService::folderItemTypeEnumToString(BluetoothAvrcpItemType type)
+{
+	switch(type)
+	{
+		case BluetoothAvrcpItemType::ITEM_TYPE_AUDIO:
+		return "Audio";
+		case BluetoothAvrcpItemType::ITEM_TYPE_VIDEO:
+		return "Video";
+		case BluetoothAvrcpItemType::ITEM_TYPE_FOLDER:
+		return "Folder";
+		default:
+		return "Audio";
+	}
 }

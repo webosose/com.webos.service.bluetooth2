@@ -246,7 +246,11 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MAP_INSTANCE_NOT_EXIST, "The supplied instance does not exist"},
 	{BT_ERR_MAP_SESSION_ID_NOT_EXIST, "The supplied session id does not exist"},
 	{BT_ERR_MAP_SESSION_ID_PARAM_MISSING, "Required 'sessionId' parameter is not supplied"},
-	{BT_ERR_MAP_FOLDER_PARAM_MISSING,"Required 'folder' parameter is not supplied"}
+	{BT_ERR_MAP_FOLDER_PARAM_MISSING,"Required 'folder' parameter is not supplied"},
+	{BT_ERR_AVRCP_START_INDEX_PARAM_MISSING, "Required 'startIndex' parameter is not supplied"},
+	{BT_ERR_AVRCP_END_INDEX_PARAM_MISSING, "Required 'endIndex' parameter is not supplied"},
+	{BT_ERR_AVRCP_ITEM_PATH_PARAM_MISSING, "Required 'itemPath' parameter is not supplied"},
+	{BT_ERR_AVRCP_SEARCH_STRING_PARAM_MISSING, "Required 'searchString' parameter is not supplied"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
