@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019 LG Electronics, Inc.
+// Copyright (c) 2014-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@
 #include "bluetoothpairstate.h"
 #ifdef MULTI_SESSION_SUPPORT
 #include "ls2utils.h"
+#include "bluetoothpdminterface.h"
 #endif
 
 class BluetoothProfileService;
@@ -124,6 +125,9 @@ public:
 	std::string getMessageOwner(LSMessage *message);
 	int getAdvSize(AdvertiseData advData, bool flagRequired);
 	bool isValidAddress(std::string& address);
+#ifdef MULTI_SESSION_SUPPORT
+	std::unordered_map<std::string, BluetoothManagerAdapter*> getAvailableBluetoothAdapters() { return mAdaptersInfo; }
+#endif
 
 private:
 	bool setState(LSMessage &message);
@@ -234,6 +238,7 @@ private:
 #ifdef MULTI_SESSION_SUPPORT
 	LS::SubscriptionPoint mGetStatusSubscriptions[MAX_SUBSCRIPTION_SESSIONS];
 	LS::SubscriptionPoint mQueryAvailableSubscriptions[MAX_SUBSCRIPTION_SESSIONS];
+	BluetoothPdmInterface mPdmInterface;
 #else
 	LS::SubscriptionPoint mGetStatusSubscriptions;
 	LS::SubscriptionPoint mQueryAvailableSubscriptions;

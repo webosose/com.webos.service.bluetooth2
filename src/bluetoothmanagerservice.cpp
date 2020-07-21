@@ -46,6 +46,9 @@
 #include "logging.h"
 #include "config.h"
 #include "utils.h"
+#ifdef MULTI_SESSION_SUPPORT
+#include "bluetoothpdminterface.h"
+#endif
 
 #define BLUETOOTH_LE_START_SCAN_MAX_ID 999
 #define MAX_ADVERTISING_DATA_BYTES 31
@@ -71,6 +74,10 @@ BluetoothManagerService::BluetoothManagerService() :
 	mDefaultAdapter(0),
 	mAdvertisingWatch(0),
 	mGattAnsc(0)
+#ifdef MULTI_SESSION_SUPPORT
+	,
+	mPdmInterface(this)
+#endif
 {
 	std::string bluetoothCapability = WEBOS_BLUETOOTH_PAIRING_IO_CAPABILITY;
 	const char* capabilityOverride = getenv("WEBOS_BLUETOOTH_PAIRING_IO_CAPABILITY");
