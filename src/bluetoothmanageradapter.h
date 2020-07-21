@@ -104,6 +104,7 @@ public:
 	BluetoothAdapter *getAdapter() const { return mAdapter; }
 
 	std::string getName() { return mName; }
+	std::string getInterface() const { return mInterfaceName; }
 	std::string getStackName() const { return mStackName; }
 	std::string getStackVersion() const { return mStackVersion; }
 	std::string getFirmwareVersion() const { return mFirmwareVersion; }
@@ -175,6 +176,7 @@ private:
 
 	BluetoothAdapter* mAdapter;
 	std::string mName;
+	std::string mInterfaceName;
 	std::string mStackName;
 	std::string mStackVersion;
 	std::string mFirmwareVersion;

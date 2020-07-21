@@ -821,6 +821,7 @@ void BluetoothManagerService::appendCurrentStatus(pbnjson::JValue &object)
 		pbnjson::JValue adapterObj = pbnjson::Object();
 		adapterObj.put("powered", adapterInfo->getPowerState());
 		adapterObj.put("name", adapterInfo->getName());
+		adapterObj.put("interfaceName", adapterInfo->getInterface());
 		adapterObj.put("adapterAddress", adapterInfo->getAddress());
 		adapterObj.put("discovering", adapterInfo->getDiscoveringState());
 		// pbnjson doesn't support unsigned int, so using int32_t for discoveryTimeout

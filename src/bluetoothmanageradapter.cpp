@@ -264,6 +264,11 @@ void BluetoothManagerAdapter::updateFromAdapterProperties(const BluetoothPropert
 #endif
 			BT_DEBUG("Bluetooth adapter alias name has changed to %s", mName.c_str());
 			break;
+		case BluetoothProperty::Type::INTERFACE_NAME:
+			mInterfaceName = prop.getValue<std::string>();
+			changed = true;
+			BT_DEBUG("Bluetooth adapter interfacename has changed to %s", mInterfaceName.c_str());
+			break;
 		case BluetoothProperty::Type::STACK_NAME:
 			mStackName = prop.getValue<std::string>();
 			changed = true;
