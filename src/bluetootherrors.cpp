@@ -47,7 +47,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE, "No folder is selected"},
 	{BLUETOOTH_ERROR_AVRCP_ITEM_NOT_PLAYABLE, "Item is not playable"},
 	{BLUETOOTH_ERROR_AVRCP_NOT_A_FOLDER, "Item is not a folder"},
-	{BLUETOOTH_ERROR_MAP_FOLDER_NOT_FOUND, "Requested folder is not found"}
+	{BLUETOOTH_ERROR_MAP_FOLDER_NOT_FOUND, "Requested folder is not found"},
+	{BLUETOOTH_ERROR_MAP_MESSAGE_HANDLE_NOT_FOUND, "Requested message handle is not found"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -253,6 +254,7 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_AVRCP_END_INDEX_PARAM_MISSING, "Required 'endIndex' parameter is not supplied"},
 	{BT_ERR_AVRCP_ITEM_PATH_PARAM_MISSING, "Required 'itemPath' parameter is not supplied"},
 	{BT_ERR_AVRCP_SEARCH_STRING_PARAM_MISSING, "Required 'searchString' parameter is not supplied"}
+	{BT_ERR_MAP_INSTANCE_ALREADY_CONNECTED, "The supplied instance already connected"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
