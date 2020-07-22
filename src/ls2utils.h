@@ -79,6 +79,8 @@
 #define OBJSCHEMA_6(p1, p2, p3, p4, p5, p6)           "{\"type\":\"object\",\"properties\":{" p1 "," p2 ", " p3 ", " p4 ", " p5 ", " p6 "}}"
 #define OBJSCHEMA_7(p1, p2, p3, p4, p5, p6, p7)       "{\"type\":\"object\",\"properties\":{" p1 "," p2 ", " p3 ", " p4 ", " p5 ", " p6 ", " p7 "}}"
 #define OBJSCHEMA_8(p1, p2, p3, p4, p5, p6, p7, p8)   "{\"type\":\"object\",\"properties\":{" p1 "," p2 ", " p3 ", " p4 ", " p5 ", " p6 ", " p7 ", " p8 "}}"
+#define OBJSCHEMA_11(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11)   "{\"type\":\"object\",\"properties\":{" p1 "," p2 ", " p3 ", " p4 ", " p5 ", " p6 ", " p7 ", " p8 ", " p9 ", " p10 ", " p11 "}}"
+
 #define OBJECT(name, objschema)                       "\"" #name "\":" objschema
 
 #define JSON_PARSE_SCHEMA_ERROR 1
