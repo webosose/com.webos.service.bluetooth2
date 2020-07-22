@@ -128,6 +128,8 @@ BluetoothManagerService::BluetoothManagerService() :
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothManagerService, device)
 		LS_CATEGORY_MAPPED_METHOD(getConnectedDevices, getConnectedDevices)
+		LS_CATEGORY_MAPPED_METHOD(getPairedDevices, getPairedDevicesStatus)
+		LS_CATEGORY_MAPPED_METHOD(getDiscoveredDevice, getDiscoveredDeviceStatus)
 		LS_CATEGORY_MAPPED_METHOD(getStatus, getDeviceStatus)
 		LS_CATEGORY_MAPPED_METHOD(setState, setDeviceState)
 	LS_CREATE_CATEGORY_END
@@ -1326,6 +1328,64 @@ bool BluetoothManagerService::getConnectedDevices(LSMessage &message)
 	auto adapter = findAdapterInfo(adapterAddress);
 
 	return adapter->getConnectedDevices(request, requestObj);
+}
+
+bool BluetoothManagerService::getPairedDevicesStatus(LSMessage &message)
+{
+	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema =  STRICT_SCHEMA(PROPS_2(PROP(subscribe, boolean), PROP(adapterAddress, string)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError == JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		else
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	auto adapter = findAdapterInfo(adapterAddress);
+
+	return adapter->getPairedDevicesStatus(request, requestObj);
+}
+
+bool BluetoothManagerService::getDiscoveredDeviceStatus(LSMessage &message)
+{
+	BT_INFO("MANAGER_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema =  STRICT_SCHEMA(PROPS_2(PROP(subscribe, boolean), PROP(adapterAddress, string)) REQUIRED_1(subscribe));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError == JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		else
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	auto adapter = findAdapterInfo(adapterAddress);
+
+	return adapter->getDiscoveredDeviceStatus(request, requestObj);
 }
 
 bool BluetoothManagerService::getDeviceStatus(LSMessage &message)

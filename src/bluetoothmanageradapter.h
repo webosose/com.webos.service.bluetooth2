@@ -55,6 +55,7 @@ public:
 	void deviceFound(const std::string &address, BluetoothPropertiesList properties);
 	void deviceRemoved(const std::string &address);
 	void devicePropertiesChanged(const std::string &address, BluetoothPropertiesList properties);
+	void updatePairedDevices(bool prevPairedState, BluetoothDevice *currentDevice);
 	/*
 	 * These will be deprecated if stack is ready to support scanId.
 	 */
@@ -90,6 +91,8 @@ public:
 	bool awaitPairingRequests(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getFilteringDeviceStatus(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getConnectedDevices(LS::Message &request, pbnjson::JValue &requestObj);
+	bool getPairedDevicesStatus(LS::Message &request, pbnjson::JValue &requestObj);
+	bool getDiscoveredDeviceStatus(LS::Message &request, pbnjson::JValue &requestObj);
 	bool getDeviceStatus(LS::Message &request, pbnjson::JValue &requestObj);
 	bool setDeviceState(LS::Message &request, pbnjson::JValue &requestObj);
 
@@ -135,6 +138,8 @@ public:
 	void appendCurrentStatus(pbnjson::JValue &object);
 	void appendFilteringDevices(std::string senderName, pbnjson::JValue &object);
 	void appendConnectedDevices(pbnjson::JValue &object);
+	void appendPairedDevices(pbnjson::JValue &object);
+	void appendDiscoveredDevice(pbnjson::JValue &object, BluetoothDevice *device);
 	void appendDevices(pbnjson::JValue &object);
 	void appendLeDevices(pbnjson::JValue &object);
 	void appendLeRecentDevice(pbnjson::JValue &object, BluetoothDevice *device);
@@ -148,6 +153,8 @@ public:
 
 	void notifySubscriberLeDevicesChanged();
 	void notifySubscribersConnectedDevicesChanged();
+	void notifySubscribersPairedDevicesChanged();
+	void notifySubscribersDiscoveredDevice(BluetoothDevice *device);
 	void notifySubscribersDevicesChanged();
 	void notifySubscribersFilteredDevicesChanged();
 	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId, BluetoothDevice *device = NULL);
@@ -197,6 +204,8 @@ private:
 	std::unordered_map <uint32_t, LSUtils::ClientWatch*> mStartScanWatches;
 	LS::SubscriptionPoint mGetDevicesSubscriptions;
 	LS::SubscriptionPoint mGetConnectedDevicesSubscriptions;
+	LS::SubscriptionPoint mGetPairedDevicesSubscriptions;
+	LS::SubscriptionPoint mGetDiscoveredDeviceSubscriptions;
 	std::vector<BluetoothServiceClassInfo> mSupportedServiceClasses;
 	std::vector<std::string> mEnabledServiceClasses;
 	BluetoothManagerService *mBluetoothManagerService;
