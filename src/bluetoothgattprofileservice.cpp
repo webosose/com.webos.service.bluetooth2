@@ -22,6 +22,7 @@
 #include "bluetootherrors.h"
 #include "ls2utils.h"
 #include "logging.h"
+#include "utils.h"
 
 using namespace std::placeholders;
 
@@ -29,9 +30,9 @@ BluetoothGattProfileService::BluetoothGattProfileService(BluetoothManagerService
 	BluetoothProfileService(manager, "GATT", "00001801-0000-1000-8000-00805f9b34fb")
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
-		LS_CATEGORY_METHOD(connect)
-		LS_CATEGORY_METHOD(disconnect)
-		LS_CATEGORY_METHOD(getStatus)
+		LS_CATEGORY_CLASS_METHOD(BluetoothGattProfileService, connect)
+		LS_CATEGORY_CLASS_METHOD(BluetoothGattProfileService, disconnect)
+		LS_CATEGORY_CLASS_METHOD(BluetoothGattProfileService, getStatus)
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattProfileService, openServer)
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattProfileService, closeServer)
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattProfileService, discoverServices)
@@ -135,17 +136,75 @@ bool BluetoothGattProfileService::isDevicePaired(const std::string &address)
 	return BluetoothProfileService::isDevicePaired(address);
 }
 
-pbnjson::JValue BluetoothGattProfileService::buildGetStatusResp(bool connected, bool connecting, bool subscribed, bool returnValue,
-                                                                       std::string adapterAddress, std::string deviceAddress)
+void BluetoothGattProfileService::notifyStatusSubscribers(
+		const std::string &adapterAddr, const std::string &devAddress, bool connected)
+{
+	BT_INFO("GATT", 0, "%s is called", __FUNCTION__);
+
+	std::string adapterAddress = convertToUpper(adapterAddr);
+	std::string address = convertToUpper(devAddress);
+
+	if (!connected)
+		removeConnectWatchForDevice(adapterAddress, address, !connected, true);
+
+	auto subscriptionsIter = mGetStatusSubsMap.find(adapterAddress);
+	if (subscriptionsIter == mGetStatusSubsMap.end())
+		return;
+
+	auto subscriptionIter = (subscriptionsIter->second).find(address);
+	if (subscriptionIter == (subscriptionsIter->second).end())
+		return;
+
+	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second.first;
+	GattStatusSubsInfo* statusPtr = subscriptionIter->second.second;
+
+	bool connecting = isDeviceConnecting(adapterAddress, address);
+	bool discServ = mDiscoveringServices[address];
+	if (statusPtr->isChanged(adapterAddress, address, connecting, connected, discServ))
+	{
+		pbnjson::JValue responseObj = buildGetStatusResp(connected, connecting,
+							true, true, adapterAddress, address);
+		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+	}
+}
+
+pbnjson::JValue BluetoothGattProfileService::buildGetStatusResp(bool connected,
+		bool connecting, bool subscribed, bool returnValue,
+                std::string adapterAddress, std::string deviceAddress)
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
 
 	appendCommonProfileStatus(responseObj, connected, connecting, subscribed,
 	                          returnValue, adapterAddress, deviceAddress);
-
-	responseObj.put("discoveringServices", mDiscoveringServices[deviceAddress]);
+	responseObj.put("discoveringServices", mDiscoveringServices[convertToUpper(deviceAddress)]);
 
 	return responseObj;
+}
+
+void BluetoothGattProfileService::removeConnectWatchForDevice(const std::string &adapterAddress,
+		const std::string &key,	bool disconnected, bool remoteDisconnect)
+{
+	auto watchesIter = mConnectSubsMap.find(convertToUpper(adapterAddress));
+	if (watchesIter == mConnectSubsMap.end())
+		return;
+	auto watchIter = (watchesIter->second).find(convertToUpper(key));
+	if (watchIter == (watchesIter->second).end())
+		return;
+
+	LS::SubscriptionPoint *subscriptionPoint = watchIter->second.first;
+	GattConnSubsInfo *connPtr = watchIter->second.second;
+	if (connPtr->isChanged(adapterAddress, key, remoteDisconnect))
+	{
+		pbnjson::JValue responseObj = pbnjson::Object();
+
+		responseObj.put("returnValue", true);
+		responseObj.put("adapaterAddress", convertToUpper(adapterAddress));
+		responseObj.put("address", convertToUpper(key));
+		responseObj.put("subscribed", true);
+		responseObj.put("disconnectByRemote", remoteDisconnect);
+
+		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+	}
 }
 
 void BluetoothGattProfileService::serviceFound(const std::string &address, const BluetoothGattService &service)
@@ -176,6 +235,16 @@ void BluetoothGattProfileService::serviceFound(const std::string &address, const
 	}
 
 	notifyGetServicesSubscribers(localAdapterChanged, adapterAddress, deviceAddress, serviceList);
+
+	std::string devAddress = convertToUpper(address);
+	for (auto iter : mGetStatusSubsMap)
+	{
+		if (iter.second.find(devAddress) != iter.second.end())
+		{
+			notifyStatusSubscribers(iter.first, devAddress, true);
+			break;
+		}
+	}
 }
 
 void BluetoothGattProfileService::serviceLost(const std::string &address, const BluetoothGattService &service)
@@ -188,6 +257,15 @@ void BluetoothGattProfileService::serviceLost(const std::string &address, const 
 		BT_INFO("BLE", 0, "address:%s service:%s Lost\n", address.c_str(), service.getUuid().toString().c_str());
 	}
 
+	std::string devAddress = convertToUpper(address);
+	for (auto iter : mConnectSubsMap)
+	{
+		if (iter.second.find(devAddress) != iter.second.end())
+		{
+			notifyStatusSubscribers(iter.first, devAddress, false);
+			break;
+		}
+	}
 }
 
 void BluetoothGattProfileService::characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic)
@@ -396,7 +474,7 @@ bool BluetoothGattProfileService::discoverServices(LSMessage &message)
 			return true;
 		}
 
-		if (!isDeviceConnected(address))
+		if (!isDeviceConnected(adapterAddress, address))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
@@ -409,10 +487,10 @@ bool BluetoothGattProfileService::discoverServices(LSMessage &message)
 	auto discoverServicesCallback  = [this, requestMessage, remoteServiceDiscovery, adapterAddress, address](BluetoothError error) {
 		BT_INFO("BLE", 0, "Service discovery process finished for device %s", address.c_str());
 
-		if (mDiscoveringServices[address])
+		if (mDiscoveringServices[convertToUpper(address)])
 		{
-			mDiscoveringServices[address] = false;
-			notifyStatusSubscribers(adapterAddress, address, isDeviceConnected(address));
+			mDiscoveringServices[convertToUpper(address)] = false;
+			notifyStatusSubscribers(adapterAddress, address, isDeviceConnected(adapterAddress, address));
 		}
 
 		if (error != BLUETOOTH_ERROR_NONE)
@@ -432,13 +510,13 @@ bool BluetoothGattProfileService::discoverServices(LSMessage &message)
 
 	if (remoteServiceDiscovery)
 	{
-		auto discoveringServicesIter = mDiscoveringServices.find(address);
+		auto discoveringServicesIter = mDiscoveringServices.find(convertToUpper(address));
 		if (discoveringServicesIter == mDiscoveringServices.end())
-			mDiscoveringServices.insert(std::pair<std::string, bool>(address, true));
+			mDiscoveringServices.insert(std::pair<std::string, bool>(convertToUpper(address), true));
 		else
-			mDiscoveringServices[address] = true;
+			mDiscoveringServices[convertToUpper(address)] = true;
 
-		notifyStatusSubscribers(getManager()->getAddress(), address, isDeviceConnected(address));
+		notifyStatusSubscribers(getManager()->getAddress(), address, isDeviceConnected(adapterAddress, address));
 		BT_DEBUG("getImpl->discoverServices\n");
 		getImpl<BluetoothGattProfile>()->discoverServices(address, discoverServicesCallback);
 	}
@@ -764,6 +842,167 @@ bool BluetoothGattProfileService::removeService(LSMessage &message)
 		res = removeLocalService(BluetoothUuid(serviceUuid), adapterAddress);
 
 	removeServiceCallback(res ? BLUETOOTH_ERROR_NONE : BLUETOOTH_ERROR_FAIL);
+
+	return true;
+}
+
+bool BluetoothGattProfileService::connect(LSMessage &message)
+{
+	BT_INFO("BLE", 0, "[%s](%d) called\n", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(address, string), PROP(adapterAddress, string),
+			                         PROP(autoConnect, boolean), PROP(subscribe, boolean)) REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	connectToStack(request, requestObj, adapterAddress);
+
+	return true;
+}
+
+bool BluetoothGattProfileService::disconnect(LSMessage &message)
+{
+	BT_INFO("BLE", 0, "[%s](%d) called\n", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(clientId, string),
+						PROP(adapterAddress, string)) REQUIRED_1(clientId));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("clientId"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	disconnectToStack(request, requestObj, adapterAddress);
+
+	return true;
+}
+
+bool BluetoothGattProfileService::getStatus(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	bool subscribed = false;
+
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string), PROP(adapterAddress, string),
+				PROP(subscribe, boolean)) REQUIRED_1(address));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+		return false;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string address = requestObj["address"].asString();
+
+	if (request.isSubscription())
+	{
+		LS::SubscriptionPoint *subscriptionPoint = 0;
+		GattStatusSubsInfo *subsPtr = 0;
+		auto subscriptionsIter = mGetStatusSubsMap.find(convertToUpper(adapterAddress));
+		if (subscriptionsIter == mGetStatusSubsMap.end())
+		{
+			std::map<std::string, std::pair<LS::SubscriptionPoint*, GattStatusSubsInfo*>> subscriptions;
+			subscriptionPoint = new LS::SubscriptionPoint;
+			subscriptionPoint->setServiceHandle(getManager());
+			subsPtr = new GattStatusSubsInfo;
+			subsPtr->init();
+			subscriptions[convertToUpper(address)] = {subscriptionPoint, subsPtr};
+			mGetStatusSubsMap[convertToUpper(adapterAddress)] = subscriptions;
+		}
+		else
+		{
+			auto subscriptionIter = (subscriptionsIter->second).find(convertToUpper(address));
+			if (subscriptionIter == (subscriptionsIter->second).end())
+			{
+				std::map<std::string, std::pair<LS::SubscriptionPoint*, GattStatusSubsInfo*>> subscriptions;
+				subscriptionPoint = new LS::SubscriptionPoint;
+				subscriptionPoint->setServiceHandle(getManager());
+				subsPtr = new GattStatusSubsInfo;
+				subsPtr->init();
+				(subscriptionsIter->second)[convertToUpper(address)] = {subscriptionPoint, subsPtr};
+			}
+			else
+			{
+				subscriptionPoint = subscriptionIter->second.first;
+			}
+		}
+
+		subscriptionPoint->subscribe(request);
+		subscribed = true;
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+
+	bool isConnected = false;
+	if (mConnectedDevicesMap.find(convertToUpper(address)) != mConnectedDevicesMap.end())
+		isConnected = true;
+
+	pbnjson::JValue responseObj = buildGetStatusResp(isConnected,
+			isDeviceConnecting(adapterAddress, address), subscribed,
+			true, adapterAddress, address);
+
+	LSUtils::postToClient(request, responseObj);
 
 	return true;
 }
@@ -1210,7 +1449,7 @@ bool BluetoothGattProfileService::getServices(LSMessage &message)
 			return true;
 		}
 
-		if (!isDeviceConnected(deviceAddress))
+		if (!isDeviceConnected(adapterAddress, deviceAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 			return true;
@@ -2418,6 +2657,25 @@ bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, 
 	}
 
 	return validDescriptor;
+}
+
+void BluetoothGattProfileService::removeSubscriptionPoint(const std::string &adapterAddr, const std::string &address)
+{
+	std::string adapterAddress = convertToUpper(adapterAddr);
+	std::string devAddress = convertToUpper(address);
+
+	if (mConnectSubsMap.find(adapterAddress) != mConnectSubsMap.end())
+	{
+		auto iter = mConnectSubsMap[adapterAddress].find(devAddress);
+		if (iter != mConnectSubsMap[adapterAddress].end())
+		{
+			LS::SubscriptionPoint* sPtr = mConnectSubsMap[adapterAddress][devAddress].first;
+			GattConnSubsInfo* gPtr = mConnectSubsMap[adapterAddress][devAddress].second;
+			delete sPtr;
+			delete gPtr;
+		}
+		mConnectSubsMap[adapterAddress].erase(iter);
+	}
 }
 
 bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, const std::string &serviceUuid,
@@ -3920,6 +4178,7 @@ void BluetoothGattProfileService::handleConnectClientDisappeared(const uint16_t 
 		markDeviceAsNotConnected(address);
 		markDeviceAsNotConnecting(address);
 		mConnectedDevices.erase(clientId);
+		removeSubscriptionPoint(adapterAddress, address);
 	};
 
 	BT_DEBUG("[%s](%d) getImpl->disconnectGatt\n", __FUNCTION__, __LINE__);
@@ -3994,10 +4253,10 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 {
 	BT_INFO("BLE", 0, "[%s](%d) called\n", __FUNCTION__, __LINE__);
 	std::string address = requestObj["address"].asString();
-	if (isDeviceConnected(address))
+	if (isDeviceConnected(adapterAddress, address))
 	{
-		uint16_t appId = getImpl<BluetoothGattProfile>()->getAppId(address);
-		uint16_t connectId = getImpl<BluetoothGattProfile>()->getConnectId(address);
+		uint16_t appId = getImpl<BluetoothGattProfile>(adapterAddress)->getAppId(address);
+		uint16_t connectId = getImpl<BluetoothGattProfile>(adapterAddress)->getConnectId(address);
 
 		if(appId > 0 && connectId > 0)
 		{
@@ -4035,7 +4294,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 	}
 
 	BT_DEBUG("[%s](%d) getImpl->addApplication\n", __FUNCTION__, __LINE__);
-	uint16_t appId = getImpl<BluetoothGattProfile>()->addApplication(BluetoothUuid(std::to_string(nextClientId())), ApplicationType::CLIENT);
+	uint16_t appId = getImpl<BluetoothGattProfile>(adapterAddress)->addApplication(BluetoothUuid(std::to_string(nextClientId())), ApplicationType::CLIENT);
 	if (appId == static_cast<uint16_t>(0))
 	{
 		BT_DEBUG("[%s](%d) add application failed\n", __FUNCTION__, __LINE__);
@@ -4056,7 +4315,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 		if (connectedError != BLUETOOTH_ERROR_NONE)
 		{
 			BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-			getImpl<BluetoothGattProfile>()->removeApplication(appId, ApplicationType::CLIENT);
+			getImpl<BluetoothGattProfile>(adapterAddress)->removeApplication(appId, ApplicationType::CLIENT);
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
 			LSMessageUnref(request.get());
 			return;
@@ -4067,7 +4326,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 		if (connected)
 		{
 			BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-			getImpl<BluetoothGattProfile>()->removeApplication(appId, ApplicationType::CLIENT);
+			getImpl<BluetoothGattProfile>(adapterAddress)->removeApplication(appId, ApplicationType::CLIENT);
 			LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECTED);
 			LSMessageUnref(request.get());
 			return;
@@ -4076,7 +4335,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 		markDeviceAsConnecting(address);
 		notifyStatusSubscribers(adapterAddress, address, false);
 
-		auto connectCallback = [this, requestMessage, appId, adapterAddress, address](BluetoothError error, uint16_t connectId) {
+		auto connectCallback = [this, requestMessage, appId, adapterAddress, address, autoConnect](BluetoothError error, uint16_t connectId) {
 			LS::Message request(requestMessage);
 			bool subscribed = false;
 
@@ -4089,7 +4348,8 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 					if (connectError != BLUETOOTH_ERROR_NONE)
 					{
 						BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-						getImpl<BluetoothGattProfile>()->removeApplication(appId, ApplicationType::CLIENT);
+						getImpl<BluetoothGattProfile>(adapterAddress)->removeApplication
+											(appId, ApplicationType::CLIENT);
 						LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
 						LSMessageUnref(request.get());
 
@@ -4131,14 +4391,14 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 					// no use anymore for the message object
 					LSMessageUnref(request.get());
 				};
-				getImpl<BluetoothProfile>()->connect(address, connectCallback);
+				getImpl<BluetoothProfile>(adapterAddress)->connect(address, connectCallback);
 				return;
 			}
 
 			if (error != BLUETOOTH_ERROR_NONE)
 			{
 				BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-				getImpl<BluetoothGattProfile>()->removeApplication(appId, ApplicationType::CLIENT);
+				getImpl<BluetoothGattProfile>(adapterAddress)->removeApplication(appId, ApplicationType::CLIENT);
 				LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
 				LSMessageUnref(request.get());
 
@@ -4156,16 +4416,47 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 			// dropped.
 			if (request.isSubscription())
 			{
-				auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-									std::bind(&BluetoothGattProfileService::handleConnectClientDisappeared, this, appId, connectId, adapterAddress, address));
+				LS::SubscriptionPoint *subscriptionPoint = 0;
+				GattConnSubsInfo* connSubsPtr = 0;
+				auto subscriptionsIter = mConnectSubsMap.find(convertToUpper(adapterAddress));
+				if (subscriptionsIter == mConnectSubsMap.end())
+				{
+					std::map<std::string, std::pair<LS::SubscriptionPoint*, GattConnSubsInfo*>> subscriptions;
+					subscriptionPoint = new LS::SubscriptionPoint;
+					subscriptionPoint->setServiceHandle(getManager());
+					connSubsPtr = new GattConnSubsInfo;
+					connSubsPtr->init();
+					subscriptions[convertToUpper(address)] = {subscriptionPoint, connSubsPtr};
+					mConnectSubsMap[convertToUpper(adapterAddress)] = subscriptions;
+				}
+				else
+				{
+					auto subscriptionIter = (subscriptionsIter->second).find(address);
+					if (subscriptionIter == (subscriptionsIter->second).end())
+					{
+						std::map<std::string, std::pair<LS::SubscriptionPoint*, GattConnSubsInfo*>> subscriptions;
+						subscriptionPoint = new LS::SubscriptionPoint;
+						subscriptionPoint->setServiceHandle(getManager());
+						connSubsPtr = new GattConnSubsInfo;
+						connSubsPtr->init();
+						(subscriptionsIter->second)[convertToUpper(address)] = {subscriptionPoint, connSubsPtr};
+					}
+					else
+					{
+						subscriptionPoint = subscriptionIter->second.first;
+					}
+				}
 
-				mConnectWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(address, watch));
+				subscriptionPoint->subscribe(request);
 				subscribed = true;
 			}
 			markDeviceAsConnected(address);
-			mConnectedDevices.insert(std::pair<uint16_t, connectedDeviceInfo*>(appId, new connectedDeviceInfo(address, connectId)));
+			mConnectedDevices.insert(std::pair<uint16_t, connectedDeviceInfo*>
+					(appId, new connectedDeviceInfo(address, connectId)));
 
-			BT_INFO("BLE", 0, "[%s](%d) device %s connected appId:%d connectId:%d\n", __FUNCTION__, __LINE__, address.c_str(), appId, connectId);
+			BT_INFO("BLE", 0, "[%s](%d) device %s connected appId:%d connectId:%d\n",
+						__FUNCTION__, __LINE__, address.c_str(), appId, connectId);
+
 			pbnjson::JValue responseObj = pbnjson::Object();
 
 			responseObj.put("subscribed", subscribed);
@@ -4176,17 +4467,24 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 
 			LSUtils::postToClient(request, responseObj);
 
+			mConnectedDevicesMap[convertToUpper(address)] = {convertToUpper(adapterAddress), autoConnect};
 			// We're done with sending out the first response to the client so
 			// no use anymore for the message object
 			LSMessageUnref(request.get());
 		};
 		BT_DEBUG("[%s](%d) getImpl->connectGatt\n", __FUNCTION__, __LINE__);
-		getImpl<BluetoothGattProfile>()->connectGatt(appId, autoConnect, address, connectCallback);
+		getImpl<BluetoothGattProfile>(adapterAddress)->connectGatt(appId, autoConnect, convertToUpper(address), connectCallback);
 	};
 
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return;
+	}
 	// Before we start to connect with the device we have to make sure
 	// we're not already connected with it.
-	getImpl<BluetoothProfile>()->getProperty(address, BluetoothProperty::Type::CONNECTED, isConnectedCallback);
+	impl->getProperty(address, BluetoothProperty::Type::CONNECTED, isConnectedCallback);
 }
 
 bool BluetoothGattProfileService::isDisconnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj)
@@ -4243,9 +4541,12 @@ void BluetoothGattProfileService::disconnectToStack(LS::Message &request, pbnjso
 		responseObj.put("address", deviceAddress);
 		LSUtils::postToClient(request, responseObj);
 
+		mConnectedDevicesMap.erase(convertToUpper(deviceAddress));
+
 		BT_DEBUG("[%s](%d) getImpl->removeApplication\n", __FUNCTION__, __LINE__);
-		getImpl<BluetoothGattProfile>()->removeApplication(appId, ApplicationType::CLIENT);
-		removeConnectWatchForDevice(deviceAddress, true, false);
+		getImpl<BluetoothGattProfile>(adapterAddress)->removeApplication(appId, ApplicationType::CLIENT);
+		removeConnectWatchForDevice(adapterAddress, deviceAddress, true, false);
+		removeSubscriptionPoint(adapterAddress, deviceAddress);
 		mConnectedDevices.erase(appId);
 		markDeviceAsNotConnected(deviceAddress);
 		markDeviceAsNotConnecting(deviceAddress);
@@ -4253,5 +4554,6 @@ void BluetoothGattProfileService::disconnectToStack(LS::Message &request, pbnjso
 	};
 
 	BT_DEBUG("[%s](%d) getImpl->disconnectGatt\n", __FUNCTION__, __LINE__);
-	getImpl<BluetoothGattProfile>()->disconnectGatt(appId, connectId, deviceAddress, disconnectCallback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->disconnectGatt
+		(appId, connectId, convertToUpper(deviceAddress), disconnectCallback);
 }

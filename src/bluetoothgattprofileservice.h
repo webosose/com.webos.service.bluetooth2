@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +52,77 @@ typedef struct
 	BluetoothUuid characteristicUuid;
 	BluetoothUuidList characteristicUuids;
 } MonitorCharacteristicSubscriptionInfo;
+
+typedef struct
+{
+	std::string adapaterAddress;
+	std::string deviceAddress;
+	bool disconnectByRemote;
+	bool used;
+	void init()
+	{
+		adapaterAddress.clear();
+		deviceAddress.clear();
+		disconnectByRemote = false;
+		used = false;
+	}
+	bool isChanged(const std::string& adapter, const std::string& address, bool remote)
+	{
+		if ((!used) || (adapaterAddress != adapter) ||
+			(deviceAddress != address) ||
+			(disconnectByRemote != remote))
+		{
+			used = true;
+			adapaterAddress = adapter;
+			deviceAddress = address;
+			disconnectByRemote = remote;
+			return true;
+		}
+		return false;
+	}
+} GattConnSubsInfo;
+
+typedef struct
+{
+	std::string adapaterAddress;
+	std::string deviceAddress;
+	bool connecting;
+	bool connected;
+	bool discoveringServices;
+	bool used;
+	void init()
+	{
+		adapaterAddress.clear();
+		deviceAddress.clear();
+		connecting = false;
+		connected = false;
+		discoveringServices = false;
+		used = false;
+	}
+	bool isChanged(const std::string& adapter,
+		       const std::string& address,
+		       bool concting,
+		       bool concted,
+		       bool discover)
+	{
+		if ((!used) || (adapaterAddress != adapter) ||
+			(deviceAddress != address) ||
+			(connecting != concting) ||
+			(connected != concted) ||
+			(discoveringServices != discover))
+		{
+			adapaterAddress = adapter;
+			deviceAddress = address;
+			connecting = concting;
+			connected = concted;
+			discoveringServices = discover;
+			 used = true;
+			return true;
+		}
+		return false;
+	}
+} GattStatusSubsInfo;
+
 
 class CharacteristicWatch
 {
@@ -377,6 +448,9 @@ public:
 	virtual void initialize();
 	virtual void initialize(BluetoothProfile *impl) {};
 	void initialize(const std::string &adapterAddress);
+	bool connect(LSMessage &message);
+	bool disconnect(LSMessage &message);
+	bool getStatus(LSMessage &message);
 	bool openServer(LSMessage &message);
 	bool closeServer(LSMessage &message);
 	bool discoverServices(LSMessage &message);
@@ -426,8 +500,13 @@ protected:
 	bool isCharacteristicValid(const std::string &address, const uint16_t &handle, BluetoothGattCharacteristic *characteristic);
 	bool isCharacteristicValid(const std::string &address, const std::string &serviceUuid, const std::string &characteristicUuid, BluetoothGattCharacteristic *characteristic);
 
+	virtual void notifyStatusSubscribers(const std::string &adapterAddress, const std::string &address, bool connected);
 	virtual pbnjson::JValue buildGetStatusResp(bool connected, bool connecting, bool subscribed, bool returnValue,
 		                                               std::string adapterAddress, std::string deviceAddress);
+	void removeConnectWatchForDevice(const std::string &adapterAddress, const std::string &key,
+							bool disconnected, bool remoteDisconnect = true);
+
+
 	void handleConnectClientDisappeared(const uint16_t &appId, const uint16_t &connectId, const std::string &adapterAddress, const std::string &address);
 private:
 	void appendServiceResponse(bool localAdapterServices, pbnjson::JValue responseObj, BluetoothGattServiceList serviceList);
@@ -442,12 +521,16 @@ private:
 	bool isDescriptorValid(const std::string &address, const uint16_t &handle, BluetoothGattDescriptor &descriptor);
 	bool isDescriptorValid(const std::string &address, const std::string &serviceUuid, const std::string &descriptorUuuid,
 	                       const std::string &characteristicUuid, BluetoothGattDescriptor &descriptor);
+	void removeSubscriptionPoint(const std::string &adapterAddress, const std::string &address);
 
 	std::unordered_map<std::string, LS::SubscriptionPoint*> mGetServicesSubscriptions;
 	std::vector<std::pair<LSUtils::ClientWatch*, MonitorCharacteristicSubscriptionInfo>>  mMonitorCharacteristicSubscriptions;
 	std::unordered_map<std::string, bool> mDiscoveringServices;
 	std::vector<CharacteristicWatch*> mCharacteristicWatchList;
 	std::vector<BluetoothGattProfileService *> mGattObservers;
+	std::unordered_map<std::string, std::pair<std::string, bool>> mConnectedDevicesMap;
+	std::map<std::string, std::map<std::string, std::pair<LS::SubscriptionPoint*, GattConnSubsInfo*>>> mConnectSubsMap;
+	std::map<std::string, std::map<std::string, std::pair<LS::SubscriptionPoint*, GattStatusSubsInfo*>>> mGetStatusSubsMap;
 };
 
 
