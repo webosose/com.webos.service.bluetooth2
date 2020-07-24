@@ -51,6 +51,8 @@ BluetoothMapProfileService::BluetoothMapProfileService(BluetoothManagerService *
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, setFolder)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getMessage)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, setMessageStatus)
+		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, pushMessage)
+		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getMessageNotification)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/map", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -403,6 +405,7 @@ void BluetoothMapProfileService::handleConnectClientDisappeared(const std::strin
 		return;
 
 	 auto disconnectCallback = [ = ](BluetoothError error, const std::string &instanceName) {
+		handleMessageNotificationClientDisappeared(adapterAddress,sessionKey);
 		removeDeviceAsConnectedWithSessionKey(adapterAddress, sessionKey);
 		markDeviceAsNotConnected(adapterAddress, sessionKey);
 		markDeviceAsNotConnecting(adapterAddress, sessionKey);
@@ -429,6 +432,7 @@ void BluetoothMapProfileService::handleDeviceClientDisappeared(const std::string
 {
 	std::string address = parseAddressFromSessionKey(sessionKey);
 	std::string sessionId = getSessionId(adapterAddress, sessionKey);
+	handleMessageNotificationClientDisappeared(adapterAddress,sessionKey);
 	removeDeviceAsConnectedWithSessionKey(adapterAddress, sessionKey);
 	markDeviceAsNotConnected(adapterAddress, sessionKey);
 	markDeviceAsNotConnecting(adapterAddress, sessionKey);
@@ -678,7 +682,6 @@ bool BluetoothMapProfileService::getStatus(LSMessage &message)
 		subscriptionPoint->subscribe(request);
 		subscribed = true;
 	}
-
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 	responseObj = buildMapGetStatusResp(adapterAddress, deviceAddress, instanceName);
@@ -1374,4 +1377,321 @@ bool BluetoothMapProfileService::isSetMessageStatusSchemaAvailable(LS::Message &
 		return false;
 
 	return true;
+}
+
+bool BluetoothMapProfileService::pushMessage(LSMessage &message)
+{
+	BT_INFO("MAP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	std::string adapterAddress;
+
+	if (!isPushMessageSchemaAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string address = requestObj["address"].asString();
+	std::string sessionId = requestObj["sessionId"].asString();
+	std::string sessionKey;
+
+	if(!isSessionIdValid(adapterAddress, address, sessionId, sessionKey))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_NOT_EXIST);
+		return true;
+	}
+
+	std::string sourceFile = requestObj["sourceFile"].asString();
+	std::string folder = requestObj["folder"].asString();
+
+	std::string charset = "utf8";
+	if (requestObj.hasKey("charset"))
+	{
+		charset = requestObj["charset"].asString();
+	}
+
+	bool transparent = false;
+	if (requestObj.hasKey("transparent"))
+	{
+		transparent =  requestObj["transparent"].asBool();
+	}
+
+	bool retry = true;
+	if (requestObj.hasKey("retry"))
+	{
+		retry =  requestObj["retry"].asBool();
+	}
+
+	if (!checkFileIsValid(sourceFile)) {
+		std::string errorMessage = "Supplied file ";
+		errorMessage += sourceFile;
+		errorMessage += " does not exist or is invalid";
+		LSUtils::respondWithError(request, errorMessage, BT_ERR_SRCFILE_INVALID);
+		return true;
+	}
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+
+	auto pushMessageCallback = [ = ](BluetoothError error, const std::string &messageHandle) {
+		LS::Message request(requestMessage);
+
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(request, error);
+			return;
+		}
+		pbnjson::JValue responseObj = pbnjson::Object();
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", address);
+		responseObj.put("returnValue", true);
+		responseObj.put("handle", messageHandle);
+		LSUtils::postToClient(request, responseObj);
+		LSMessageUnref(request.get());
+	};
+	getImpl<BluetoothMapProfile>(adapterAddress)->pushMessage(sessionKey, sourceFile, folder, charset, transparent, retry, pushMessageCallback);
+	return true;
+}
+
+bool BluetoothMapProfileService::isPushMessageSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_8(PROP(address, string), PROP(adapterAddress, string), PROP(sessionId, string), PROP(sourceFile, string), PROP(folder, string), PROP(transparent, boolean), PROP(retry, boolean), PROP(charset, string))  REQUIRED_4(address, sourceFile, folder, sessionId));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else if (!requestObj.hasKey("sessionId"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_PARAM_MISSING);
+		else if (!requestObj.hasKey("sourceFile"))
+			LSUtils::respondWithError(request, BT_ERR_SRCFILE_PARAM_MISSING);
+		else if (!requestObj.hasKey("folder"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_FOLDER_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+
+	if(!requiredCheckForMapProfile(request, requestObj, adapterAddress))
+		return false;
+
+	return true;
+}
+
+bool BluetoothMapProfileService::getMessageNotification(LSMessage &message)
+{
+	BT_INFO("MAP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	std::string adapterAddress;
+
+	if (!isGetMessageNotificationSchemaAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string address = requestObj["address"].asString();
+	std::string sessionId = requestObj["sessionId"].asString();
+	std::string sessionKey;
+
+	if(!isSessionIdValid(adapterAddress, address, sessionId, sessionKey))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_NOT_EXIST);
+		return true;
+	}
+
+	LS::SubscriptionPoint *subscriptionPoint = 0;
+
+	auto subscriptionsIter = mNotificationPropertiesSubscriptionsForMultipleAdapters.find(adapterAddress);
+	if (subscriptionsIter == mNotificationPropertiesSubscriptionsForMultipleAdapters.end())
+	{
+		std::map<std::string, LS::SubscriptionPoint*> subscriptions;
+		subscriptionPoint = new LS::SubscriptionPoint;
+		subscriptionPoint->setServiceHandle(getManager());
+		subscriptions.insert(std::pair<std::string, LS::SubscriptionPoint*>(sessionId, subscriptionPoint));
+
+		mNotificationPropertiesSubscriptionsForMultipleAdapters.insert(std::pair<std::string, std::map<std::string, LS::SubscriptionPoint*>>(adapterAddress, subscriptions));
+
+	}
+	else
+	{
+		auto subscriptionIter = (subscriptionsIter->second).find(sessionId);
+		if (subscriptionIter == (subscriptionsIter->second).end())
+		{
+			std::map<std::string, LS::SubscriptionPoint*> subscriptions;
+			subscriptionPoint = new LS::SubscriptionPoint;
+			subscriptionPoint->setServiceHandle(getManager());
+			(subscriptionsIter->second).insert(std::pair<std::string, LS::SubscriptionPoint*>(sessionId, subscriptionPoint));
+
+		}
+		else
+		{
+			subscriptionPoint = subscriptionIter->second;
+		}
+	}
+
+	subscriptionPoint->subscribe(request);
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("sessionId", sessionId);
+	responseObj.put("returnValue", true);
+	responseObj.put("subscribed", true);
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+void BluetoothMapProfileService::handleMessageNotificationClientDisappeared(const std::string &adapterAddress, const std::string &sessionKey)
+{
+	std::string sessionId = getSessionId(adapterAddress, sessionKey);
+	std::string address = parseAddressFromSessionKey(sessionKey);
+	auto subscriptionsIter = mNotificationPropertiesSubscriptionsForMultipleAdapters.find(adapterAddress);
+	if (subscriptionsIter == mNotificationPropertiesSubscriptionsForMultipleAdapters.end())
+		return;
+	auto subscriptionIter = (subscriptionsIter->second).find(sessionId);
+	if (subscriptionIter == (subscriptionsIter->second).end())
+		return;
+
+	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	responseObj.put("sessionId", sessionId);
+	responseObj.put("returnValue", true);
+	responseObj.put("subscribed", false);
+	LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+
+	if(subscriptionPoint)
+	{
+		(subscriptionsIter->second).erase(sessionId);
+		delete subscriptionPoint;
+	}
+}
+
+bool BluetoothMapProfileService::isGetMessageNotificationSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_5(PROP(address, string), PROP(adapterAddress, string), PROP(sessionId, string), PROP(subscribe, boolean), PROP_WITH_VAL_1(subscribe, boolean, true))  REQUIRED_3(address, sessionId, subscribe));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else if (!requestObj.hasKey("subscribe"))
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
+		else if (!requestObj.hasKey("sessionId"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+
+	if(!requiredCheckForMapProfile(request, requestObj, adapterAddress))
+		return false;
+
+	return true;
+}
+
+void BluetoothMapProfileService::messageNotificationEvent(const std::string &adapterAddress, const std::string &sessionId, BluetoothMessageList &messageList)
+{
+	BT_INFO("MAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	notifySubscribersAboutPropertiesChange(adapterAddress, sessionId, messageList);
+}
+
+void BluetoothMapProfileService::notifySubscribersAboutPropertiesChange(const std::string &adapterAddress, const std::string &sessionId, BluetoothMessageList &messageList)
+{
+	BT_INFO("MAP_SERVICE", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	std::string address = parseAddressFromSessionKey(findSessionKey(adapterAddress, sessionId));
+	auto subscriptionsIter = mNotificationPropertiesSubscriptionsForMultipleAdapters.find(adapterAddress);
+	if (subscriptionsIter == mNotificationPropertiesSubscriptionsForMultipleAdapters.end())
+		return;
+	auto subscriptionIter = (subscriptionsIter->second).find(sessionId);
+	if (subscriptionIter == (subscriptionsIter->second).end())
+		return;
+
+	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", address);
+	appendNotificationEvent(responseObj,messageList);
+	responseObj.put("subscribed", true);
+	responseObj.put("sessionId", sessionId);
+	responseObj.put("returnValue", true);
+	LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+}
+
+void BluetoothMapProfileService::appendNotificationEvent(pbnjson::JValue &responseObject , BluetoothMessageList& messageList)
+{
+	BT_INFO("MAP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	std::string notificationType;
+	pbnjson::JValue messageObject = pbnjson::Object();
+	for(auto message : messageList)
+	{
+		pbnjson::JValue newMessageObject = pbnjson::Object();
+		messageObject.put("handle", message.first);
+		pbnjson::JValue messageProperty = pbnjson::Object();
+		for (auto property : message.second)
+		{
+			BT_INFO("MAP", 0, "Luna API is called : [%s : %d , %d]", __FUNCTION__, __LINE__,property.getType());
+			switch (property.getType())
+			{
+			case BluetoothMapProperty::Type::EVENTTYPE:
+				notificationType = property.getValue<std::string>();
+				responseObject.put("notificationType", notificationType);
+				break;
+			case BluetoothMapProperty::Type::FOLDER:
+				messageProperty.put("folder",(property.getValue<std::string>()));
+				break;
+			case BluetoothMapProperty::Type::OLDFOLDER:
+				messageProperty.put("oldFolder",(property.getValue<std::string>()));
+				break;
+			case BluetoothMapProperty::Type::MESSAGETYPES:
+				messageProperty.put("type",(property.getValue<std::string>()));
+				break;
+			case BluetoothMapProperty::Type::SENDER:
+				newMessageObject.put("sender",(property.getValue<std::string>()));
+				break;
+			case BluetoothMapProperty::Type::SUBJECT:
+				newMessageObject.put("subject",(property.getValue<std::string>()));
+				break;
+			case BluetoothMapProperty::Type::TIMESTAMP:
+				newMessageObject.put("dateTime",(property.getValue<std::string>()));
+				break;
+			case BluetoothMapProperty::Type::PRIORITY:
+				newMessageObject.put("priority",(property.getValue<bool>()));
+				break;
+			default:
+				break;
+			}
+		}
+		if(notificationType == "NewMessage")
+			messageProperty.put("newMessageProperties",newMessageObject);
+		messageObject.put("properties", messageProperty);
+	}
+	responseObject.put("messages",messageObject);
+}
+
+
+std::string BluetoothMapProfileService::findSessionKey(const std::string &adapterAddress, const std::string &sessionId)
+{
+	std::string sessionKey;
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdaptersWithSessionKey.find(adapterAddress);
+	if (connectedDevicesiter != mConnectedDevicesForMultipleAdaptersWithSessionKey.end())
+	{
+		std::map<std::string, std::string> connectedDevicesWithSessonKey = connectedDevicesiter->second;
+		for (auto it = connectedDevicesWithSessonKey.begin(); it != connectedDevicesWithSessonKey.end(); ++it)
+		{
+			if (it->second == sessionId)
+			{
+				sessionKey = it->first;
+				return sessionKey;
+			}
+		}
+	}
+	return sessionKey;
 }

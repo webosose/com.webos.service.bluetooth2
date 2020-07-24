@@ -30,6 +30,8 @@ public:
 	bool setFolder(LSMessage &message);
 	bool getMessage(LSMessage &message);
 	bool setMessageStatus(LSMessage &message);
+	bool pushMessage(LSMessage &message);
+	bool getMessageNotification(LSMessage &message);
 	void handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &sessionKey);
 	void propertiesChanged(const std::string &adapterAddress, const std::string &sessionKey, BluetoothPropertiesList properties);
 private:
@@ -66,8 +68,17 @@ private:
 	bool isGetMessageSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	std::string buildStorageDirPath(const std::string &path, const std::string &address);
 	bool isSetMessageStatusSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
+	bool isPushMessageSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
+	bool isGetMessageNotificationSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
+	void notifySubscribersAboutPropertiesChange(const std::string &adapterAddress, const std::string &sessionId, BluetoothMessageList &messageList);
+	void appendCurrentProperties(pbnjson::JValue &object);
+	std::string findSessionKey(const std::string &adapterAddress, const std::string &sessionId);
+	void messageNotificationEvent(const std::string &adapterAddress, const std::string &sessionId, BluetoothMessageList &properties);
+	void appendNotificationEvent(pbnjson::JValue &responseObject , BluetoothMessageList& messageList);
+	void handleMessageNotificationClientDisappeared(const std::string &adapterAddress, const std::string &sessionKey);
 	std::map<std::string, std::map<std::string, std::string>> mConnectedDevicesForMultipleAdaptersWithSessionKey;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mMapGetStatusSubscriptionsForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mConnectWatchesForMultipleAdaptersWithSessionKey;
+	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mNotificationPropertiesSubscriptionsForMultipleAdapters;
 };
 #endif // BLUETOOTHMAPPROFILESERVICE_H
