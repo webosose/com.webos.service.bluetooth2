@@ -719,7 +719,7 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 		}
 		BT_DEBUG("Add service %s complete", serviceUuid.c_str());
 
-        auto localService = findLocalService(serviceUuid);
+        auto localService = findLocalService(serviceUuid, adapterAddress);
         if (!localService)
         {
             BT_ERROR("ADD_SERVICE_FAILED", 0, "Failed to findLocalService %s ", serviceUuid.c_str());
@@ -727,7 +727,7 @@ bool BluetoothGattProfileService::addService(LSMessage &message)
 			return;
         }
 
-        auto localServer = findLocalServerByServiceId(localService->id);
+        auto localServer = findLocalServerByServiceId(localService->id, adapterAddress);
         if (!localServer)
         {
             BT_ERROR("ADD_SERVICE_FAILED", 0, "Failed to find localServer %d", localService->id);
@@ -1522,7 +1522,7 @@ bool BluetoothGattProfileService::isCharacteristicValid(const std::string &adapt
 	if (address.empty())
 	{
 		BluetoothGattCharacteristic characteristicElement;
-		if(getLocalCharacteristic(handle, characteristicElement))
+		if(getLocalCharacteristic(handle, characteristicElement, adapterAddress))
 		{
 			retCharacteristic = characteristicElement;
 			valid_characteristic = true;
@@ -1557,7 +1557,7 @@ bool BluetoothGattProfileService::isCharacteristicValid(const std::string &adapt
 
 	BluetoothGattService service;
 	if (address.empty())
-		service = getLocalService(serviceUuid);
+		service = getLocalService(serviceUuid, adapterAddress);
 	else
 		service = getImpl<BluetoothGattProfile>(adapterAddress)->getService(address, serviceUuid);
 
@@ -1600,12 +1600,6 @@ bool BluetoothGattProfileService::writeCharacteristicValue(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_7(PROP(adapterAddress, string), PROP(serverId, string), PROP(clientId, string),
 	                                                 PROP(service, string), PROP(characteristic, string),
@@ -1652,18 +1646,13 @@ bool BluetoothGattProfileService::writeCharacteristicValue(LSMessage &message)
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
 	{
-		adapterAddress = requestObj["adapterAddress"].asString();
-		if (!getManager()->isAdapterAvailable(adapterAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
-			return true;
-		}
-	}
-	else
-	{
-		adapterAddress = getManager()->getAddress();
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
 	}
 
 	uint16_t appId = 0;
@@ -1762,24 +1751,24 @@ bool BluetoothGattProfileService::writeCharacteristicValue(LSMessage &message)
 		if(connectId > 0)
 		{
 			if (!requestObj.hasKey("instanceId"))
-				getImpl<BluetoothGattProfile>()->writeCharacteristic(connectId, serviceUuid, characteristicToWrite, writeCharacteristicCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeCharacteristic(connectId, serviceUuid, characteristicToWrite, writeCharacteristicCallback);
 			else
-				getImpl<BluetoothGattProfile>()->writeCharacteristic(connectId, characteristicToWrite, writeCharacteristicCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeCharacteristic(connectId, characteristicToWrite, writeCharacteristicCallback);
 		}
 		else
 		{
 			if (!requestObj.hasKey("instanceId"))
-				getImpl<BluetoothGattProfile>()->writeCharacteristic(deviceAddress, serviceUuid, characteristicToWrite, writeCharacteristicCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeCharacteristic(deviceAddress, serviceUuid, characteristicToWrite, writeCharacteristicCallback);
 			else
-				getImpl<BluetoothGattProfile>()->writeCharacteristic(deviceAddress, characteristicToWrite, writeCharacteristicCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeCharacteristic(deviceAddress, characteristicToWrite, writeCharacteristicCallback);
 		}
 	}
 	else
 	{
 		if (!requestObj.hasKey("instanceId"))
-			writeLocalCharacteristic(serviceUuid, characteristicToWrite, writeCharacteristicCallback);
+			writeLocalCharacteristic(serviceUuid, characteristicToWrite, writeCharacteristicCallback, adapterAddress);
 		else
-			writeLocalCharacteristic(characteristicToWrite, writeCharacteristicCallback);
+			writeLocalCharacteristic(characteristicToWrite, writeCharacteristicCallback, adapterAddress);
 	}
 	return true;
 }
@@ -2281,7 +2270,7 @@ bool BluetoothGattProfileService::monitorCharacteristic(LSMessage &message)
 		std::string serviceUuid = requestObj["service"].asString();
 
 		if (deviceAddress.empty())
-			service = getLocalService(serviceUuid);
+			service = getLocalService(serviceUuid, adapterAddress);
 		else
 			service = getImpl<BluetoothGattProfile>()->getService(deviceAddress, serviceUuid);
 
@@ -2473,7 +2462,7 @@ bool BluetoothGattProfileService::monitorCharacteristics(LSMessage &message)
 	std::string serviceUuid = requestObj["service"].asString();
 
 	if (deviceAddress.empty())
-		service = getLocalService(serviceUuid);
+		service = getLocalService(serviceUuid, adapterAddress);
 	else
 		service = getImpl<BluetoothGattProfile>()->getService(deviceAddress, serviceUuid);
 
@@ -2591,13 +2580,13 @@ bool BluetoothGattProfileService::monitorCharacteristics(LSMessage &message)
 }
 
 bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, const uint16_t &handle,
-                                                    BluetoothGattDescriptor &descriptor)
+                                                    BluetoothGattDescriptor &descriptor, const std::string &adapterAddress)
 {
 	bool validDescriptor = false;
 	if (address.empty())
 	{
 		BluetoothGattDescriptor descriptorElement;
-		if(getLocalDescriptor(handle, descriptorElement))
+		if(getLocalDescriptor(handle, descriptorElement, adapterAddress))
 		{
 			descriptor = descriptorElement;
 			validDescriptor = true;
@@ -2605,7 +2594,7 @@ bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, 
 	}
 	else
 	{
-		BluetoothGattServiceList services = getImpl<BluetoothGattProfile>()->getServices(address);
+		BluetoothGattServiceList services = getImpl<BluetoothGattProfile>(adapterAddress)->getServices(address);
 		for (auto service : services)
 		{
 			for (auto characteristicElement : service.getCharacteristics())
@@ -2644,7 +2633,7 @@ void BluetoothGattProfileService::removeSubscriptionPoint(const std::string &ada
 
 bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, const std::string &serviceUuid,
                                                     const std::string &characteristicUuid,
-                                                    const std::string &descriptorUuuid, BluetoothGattDescriptor &descriptor)
+                                                    const std::string &descriptorUuuid, BluetoothGattDescriptor &descriptor, const std::string &adapterAddress)
 {
 	bool validDescriptor = false;
 
@@ -2652,9 +2641,9 @@ bool BluetoothGattProfileService::isDescriptorValid(const std::string &address, 
 
 	BluetoothGattService service;
 	if (address.empty())
-		service = getLocalService(serviceUuid);
+		service = getLocalService(serviceUuid, adapterAddress);
 	else
-		service = getImpl<BluetoothGattProfile>()->getService(address, serviceUuid);
+		service = getImpl<BluetoothGattProfile>(adapterAddress)->getService(address, serviceUuid);
 	if (!service.isValid())
 		return false;
 
@@ -2828,7 +2817,7 @@ bool BluetoothGattProfileService::readDescriptorValue(LSMessage &message)
 	{
 		uint16_t handle = idToInt(requestObj["instanceId"].asString());
 		BluetoothGattDescriptor descriptorToRead;
-		if (!isDescriptorValid(address, handle, descriptorToRead))
+		if (!isDescriptorValid(address, handle, descriptorToRead, adapterAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_GATT_INVALID_DESCRIPTOR);
 			return true;
@@ -2839,7 +2828,7 @@ bool BluetoothGattProfileService::readDescriptorValue(LSMessage &message)
 		serviceUuid = requestObj["service"].asString();
 		characteristicUuid = requestObj["characteristic"].asString();
 		descriptorUuid = requestObj["descriptor"].asString();
-		if (!isDescriptorValid(address, serviceUuid, characteristicUuid, descriptorUuid, descriptorToRead))
+		if (!isDescriptorValid(address, serviceUuid, characteristicUuid, descriptorUuid, descriptorToRead, adapterAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_GATT_INVALID_DESCRIPTOR);
 			return true;
@@ -2963,7 +2952,7 @@ bool BluetoothGattProfileService::readDescriptorValues(LSMessage &message)
 	for (int i = 0; i < descriptorsUuidsArray.arraySize(); i++)
 	{
 		BluetoothGattDescriptor descriptorToRead;
-		if (!isDescriptorValid(address, serviceUuid, characteristicUuid, descriptorsUuidsArray[i].asString(), descriptorToRead))
+		if (!isDescriptorValid(address, serviceUuid, characteristicUuid, descriptorsUuidsArray[i].asString(), descriptorToRead, adapterAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_GATT_INVALID_DESCRIPTOR);
 			return true;
@@ -3012,12 +3001,6 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_8(PROP(adapterAddress, string), PROP(serverId, string), PROP(clientId, string),
 	                                                 PROP(service, string), PROP(characteristic, string),
@@ -3069,18 +3052,13 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
 	{
-		adapterAddress = requestObj["adapterAddress"].asString();
-		if (!getManager()->isAdapterAvailable(adapterAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
-			return true;
-		}
-	}
-	else
-	{
-		adapterAddress = getManager()->getAddress();
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
 	}
 
 	uint16_t appId = 0;
@@ -3121,7 +3099,7 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 	if (requestObj.hasKey("instanceId"))
 	{
 		uint16_t handle = idToInt(requestObj["instanceId"].asString());
-		if (!isDescriptorValid(address, handle, descriptorToWrite))
+		if (!isDescriptorValid(address, handle, descriptorToWrite, adapterAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_GATT_INVALID_DESCRIPTOR);
 			return true;
@@ -3129,7 +3107,7 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 	}
 	else
 	{
-		if (!isDescriptorValid(address, serviceUuid, characteristicUuid, descriptorUuid, descriptorToWrite))
+		if (!isDescriptorValid(address, serviceUuid, characteristicUuid, descriptorUuid, descriptorToWrite, adapterAddress))
 		{
 			LSUtils::respondWithError(request, BT_ERR_GATT_INVALID_DESCRIPTOR);
 			return true;
@@ -3183,24 +3161,24 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 		if (connectId > 0)
 		{
 			if (!requestObj.hasKey("instanceId"))
-				getImpl<BluetoothGattProfile>()->writeDescriptor(connectId, serviceUuid, characteristicUuid, descriptorToWrite, writeDescriptorCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeDescriptor(connectId, serviceUuid, characteristicUuid, descriptorToWrite, writeDescriptorCallback);
 			else
-				getImpl<BluetoothGattProfile>()->writeDescriptor(connectId, descriptorToWrite, writeDescriptorCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeDescriptor(connectId, descriptorToWrite, writeDescriptorCallback);
 		}
 		else
 		{
 			if (!requestObj.hasKey("instanceId"))
-				getImpl<BluetoothGattProfile>()->writeDescriptor(deviceAddress, serviceUuid, characteristicUuid, descriptorToWrite, writeDescriptorCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeDescriptor(deviceAddress, serviceUuid, characteristicUuid, descriptorToWrite, writeDescriptorCallback);
 			else
-				getImpl<BluetoothGattProfile>()->writeDescriptor(deviceAddress, descriptorToWrite, writeDescriptorCallback);
+				getImpl<BluetoothGattProfile>(adapterAddress)->writeDescriptor(deviceAddress, descriptorToWrite, writeDescriptorCallback);
 		}
 	}
 	else
 	{
 		if (!requestObj.hasKey("instanceId"))
-			writeLocalDescriptor(serviceUuid, characteristicUuid, descriptorToWrite, writeDescriptorCallback);
+			writeLocalDescriptor(serviceUuid, characteristicUuid, descriptorToWrite, writeDescriptorCallback, adapterAddress);
 		else
-			writeLocalDescriptor(descriptorToWrite, writeDescriptorCallback);
+			writeLocalDescriptor(descriptorToWrite, writeDescriptorCallback, adapterAddress);
 	}
 
 	return true;
@@ -3260,7 +3238,7 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 		return;
 	}
 
-	if (isLocalServiceRegistered(service.getUuid()))
+	if (server->isLocalServiceRegistered(service.getUuid()))
 	{
 		BT_ERROR("GATT_SERVICE_ALREADY_REGISTERED", 0,
 		              "Service %s is already registered",
@@ -3492,13 +3470,13 @@ bool BluetoothGattProfileService::removeLocalService(const BluetoothUuid &uuid, 
 		if (server == nullptr)
 			return false;
 
+		std::string adptAddress1 = mServerAdapterMap[server->id];
+		if(adptAddress1.compare(adapterAddress) != 0)
+			continue;
+
 		auto service = serverIter.second->findLocalService(uuid);
 		if (service == nullptr)
 			continue;
-
-		std::string adptAddress1 = mServerAdapterMap[server->id];
-		if(adptAddress1.compare(adapterAddress) != 0)
-			return false;
 
 		auto callback = [this, server, uuid](BluetoothError error) {
 			server->removeLocalService(uuid);
@@ -3555,11 +3533,44 @@ BluetoothGattProfileService::LocalService* BluetoothGattProfileService::findLoca
 	return nullptr;
 }
 
-BluetoothGattProfileService::LocalServer* BluetoothGattProfileService::findLocalServerByServiceId(uint16_t serviceId)
+BluetoothGattProfileService::LocalService* BluetoothGattProfileService::findLocalService(uint16_t serviceId, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
+
+
 	for (auto iterServer : mLocalServer)
 	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if (adptAddress1.compare(adapterAddress) != 0)
+		{
+			continue;
+		}
+
+		auto ret = iterServer.second->findLocalService(serviceId);
+		if(ret != nullptr)
+		{
+			BT_DEBUG("[%s](%d) find service id %d\n", __FUNCTION__, __LINE__, serviceId);
+			return ret;
+		}
+	}
+
+	return nullptr;
+}
+
+BluetoothGattProfileService::LocalServer* BluetoothGattProfileService::findLocalServerByServiceId(uint16_t serviceId, const std::string &adapterAddress)
+{
+	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
+
+	for (auto iterServer : mLocalServer)
+	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if (adptAddress1.compare(adapterAddress) != 0)
+		{
+			continue;
+		}
+
 		for (auto iterService : iterServer.second->mLocalServices)
 		{
 			if(iterService.second->id == serviceId)
@@ -3573,11 +3584,19 @@ BluetoothGattProfileService::LocalServer* BluetoothGattProfileService::findLocal
 	return nullptr;
 }
 
-BluetoothGattProfileService::LocalService* BluetoothGattProfileService::findLocalServiceByCharId(uint16_t charId)
+BluetoothGattProfileService::LocalService* BluetoothGattProfileService::findLocalServiceByCharId(uint16_t charId, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
+
 	for (auto iterServer : mLocalServer)
 	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if (adptAddress1.compare(adapterAddress) != 0)
+		{
+			continue;
+		}
+
 		for (auto iterService : iterServer.second->mLocalServices)
 		{
 			for (auto iterChar: iterService.second->desc.getCharacteristics())
@@ -3610,11 +3629,41 @@ BluetoothGattProfileService::LocalService* BluetoothGattProfileService::findLoca
 	return nullptr;
 }
 
-bool BluetoothGattProfileService::getLocalCharacteristic(const uint16_t &handle, BluetoothGattCharacteristic &characteristic)
+BluetoothGattProfileService::LocalService* BluetoothGattProfileService::findLocalService(const BluetoothUuid &uuid, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
+
 	for (auto iterServer : mLocalServer)
 	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if (adptAddress1.compare(adapterAddress) != 0)
+		{
+			continue;
+		}
+
+		auto ret = iterServer.second->findLocalService(uuid);
+		if(ret != nullptr)
+		{
+			BT_DEBUG("[%s](%d) find service %s\n", __FUNCTION__, __LINE__, uuid.toString().c_str());
+			return ret;
+		}
+	}
+
+	return nullptr;
+}
+
+
+bool BluetoothGattProfileService::getLocalCharacteristic(const uint16_t &handle, BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress)
+{
+	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
+	for (auto iterServer : mLocalServer)
+	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if(adptAddress1.compare(adapterAddress) != 0)
+			continue;
+
 		if(iterServer.second->getLocalCharacteristic(handle, characteristic))
 		{
 			BT_INFO("BLE", 0, "[%s](%d) found characteristic %s\n", __FUNCTION__, __LINE__, characteristic.getUuid().toString().c_str());
@@ -3624,11 +3673,16 @@ bool BluetoothGattProfileService::getLocalCharacteristic(const uint16_t &handle,
 	return false;
 }
 
-bool BluetoothGattProfileService::getLocalDescriptor(const uint16_t &handle, BluetoothGattDescriptor &descriptor)
+bool BluetoothGattProfileService::getLocalDescriptor(const uint16_t &handle, BluetoothGattDescriptor &descriptor, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
 	for (auto iterServer : mLocalServer)
 	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if(adptAddress1.compare(adapterAddress) != 0)
+			continue;
+
 		if(iterServer.second->getLocalDescriptor(handle, descriptor))
 		{
 			BT_INFO("BLE", 0, "[%s](%d) found descriptor %s\n", __FUNCTION__, __LINE__, descriptor.getUuid().toString().c_str());
@@ -3639,12 +3693,17 @@ bool BluetoothGattProfileService::getLocalDescriptor(const uint16_t &handle, Blu
 }
 
 // TODO: change
-BluetoothGattService BluetoothGattProfileService::getLocalService(const std::string &serviceUuid)
+BluetoothGattService BluetoothGattProfileService::getLocalService(const std::string &serviceUuid, const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
 	BluetoothGattService ret;
 	for (auto iterServer : mLocalServer)
 	{
+		adptAddress1 = mServerAdapterMap[iterServer.second->id];
+		if(adptAddress1.compare(adapterAddress) != 0)
+			continue;
+
 		auto localService = iterServer.second-> findLocalService(serviceUuid);
 		if (!localService)
 			continue;
@@ -3795,18 +3854,19 @@ void BluetoothGattProfileService::readLocalDescriptors(
 
 void BluetoothGattProfileService::writeLocalCharacteristic(
 		const BluetoothGattCharacteristic &characteristic,
-		BluetoothResultCallback callback)
+		BluetoothResultCallback callback,
+		const std::string &adapterAddress)
 {
 	// This will override the already stored value or if no one is
 	// stored yet put in the new one.
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
-	auto localService = findLocalServiceByCharId(characteristic.getHandle());
+	auto localService = findLocalServiceByCharId(characteristic.getHandle(), adapterAddress);
 	if (localService)
 	{
 		localService->desc.updateCharacteristicValue(characteristic.getUuid(), characteristic.getValue());
 		safe_callback(callback, BLUETOOTH_ERROR_NONE);
 		BT_DEBUG("[%s](%d) getImpl->notifyCharacteristicValueChanged\n", __FUNCTION__, __LINE__);
-		getImpl<BluetoothGattProfile>()->notifyCharacteristicValueChanged(localService->id, characteristic, characteristic.getHandle());
+		getImpl<BluetoothGattProfile>(adapterAddress)->notifyCharacteristicValueChanged(localService->id, characteristic, characteristic.getHandle());
 		for (auto it = mMonitorCharacteristicSubscriptions.begin() ; it != mMonitorCharacteristicSubscriptions.end(); ++it)
 		{
 			auto subscriptionValue = it->second;
@@ -3835,7 +3895,7 @@ void BluetoothGattProfileService::writeLocalCharacteristic(
 			pbnjson::JValue responseObj = pbnjson::Object();
 			responseObj.put("returnValue", true);
 			responseObj.put("subscribed", true);
-			responseObj.put("adapterAddress", getManager()->getAddress());
+			responseObj.put("adapterAddress", adapterAddress);
 
 			pbnjson::JValue characteristicObj = pbnjson::Object();
 			characteristicObj.put("characteristic", characteristic.getUuid().toString());
@@ -3863,10 +3923,11 @@ void BluetoothGattProfileService::writeLocalCharacteristic(
 void BluetoothGattProfileService::writeLocalCharacteristic(
 		const BluetoothUuid &service,
 		const BluetoothGattCharacteristic &characteristic,
-		BluetoothResultCallback callback)
+		BluetoothResultCallback callback,
+		const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
-	auto localService = findLocalService(service);
+	auto localService = findLocalService(service, adapterAddress);
 	if (!localService)
 	{
 		BT_ERROR("GATT_FAILED_TO_WRITE_CHAR", 0, "Failed to write local characteristic %s of service %s because the service isn't registered",
@@ -3895,9 +3956,9 @@ void BluetoothGattProfileService::writeLocalCharacteristic(
 	localService->desc.updateCharacteristicValue(characteristic.getUuid(), characteristic.getValue());
 
 	safe_callback(callback, BLUETOOTH_ERROR_NONE);
-	auto localServer = findLocalServerByServiceId(localService->id);
+	auto localServer = findLocalServerByServiceId(localService->id, adapterAddress);
 	BT_DEBUG("[%s](%d) getImpl->notifyCharacteristicValueChanged\n", __FUNCTION__, __LINE__);
-	getImpl<BluetoothGattProfile>()->notifyCharacteristicValueChanged(localServer->id, localService->id, characteristic, characteristic.getHandle());
+	getImpl<BluetoothGattProfile>(adapterAddress)->notifyCharacteristicValueChanged(localServer->id, localService->id, characteristic, characteristic.getHandle());
 
 	for (auto it = mMonitorCharacteristicSubscriptions.begin() ; it != mMonitorCharacteristicSubscriptions.end(); ++it)
 	{
@@ -3927,7 +3988,7 @@ void BluetoothGattProfileService::writeLocalCharacteristic(
 		pbnjson::JValue responseObj = pbnjson::Object();
 		responseObj.put("returnValue", true);
 		responseObj.put("subscribed", true);
-		responseObj.put("adapterAddress", getManager()->getAddress());
+		responseObj.put("adapterAddress", adapterAddress);
 
 		pbnjson::JValue characteristicObj = pbnjson::Object();
 		characteristicObj.put("characteristic", characteristic.getUuid().toString());
@@ -3948,12 +4009,21 @@ void BluetoothGattProfileService::writeLocalCharacteristic(
 
 void BluetoothGattProfileService::writeLocalDescriptor(
 		const BluetoothGattDescriptor &descriptor,
-		BluetoothResultCallback callback)
+		BluetoothResultCallback callback,
+		const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
+	std::string adptAddress1;
+
 	//todo: implement
 	for (auto server : mLocalServer)
 	{
+		adptAddress1 = mServerAdapterMap[server.second->id];
+		if (adptAddress1.compare(adapterAddress) != 0)
+		{
+			continue;
+		}
+
 		for (auto service : server.second->mLocalServices)
 		{
 			auto localService = service.second;
@@ -3961,7 +4031,7 @@ void BluetoothGattProfileService::writeLocalDescriptor(
 			{
 				BluetoothGattCharacteristic characteristic = localService->getParentCharacteristic(descriptor.getHandle());
 				localService->desc.updateDescriptorValue(characteristic.getUuid(), descriptor.getUuid(), descriptor.getValue());
-				getImpl<BluetoothGattProfile>()->notifyDescriptorValueChanged(server.second->id, localService->id, descriptor.getHandle(), descriptor, characteristic.getHandle());
+				getImpl<BluetoothGattProfile>(adapterAddress)->notifyDescriptorValueChanged(server.second->id, localService->id, descriptor.getHandle(), descriptor, characteristic.getHandle());
 				safe_callback(callback, BLUETOOTH_ERROR_NONE);
 			}
 		}
@@ -3975,10 +4045,11 @@ void BluetoothGattProfileService::writeLocalDescriptor(
 		const BluetoothUuid& service,
 		const BluetoothUuid &characteristic,
 		const BluetoothGattDescriptor &descriptor,
-		BluetoothResultCallback callback)
+		BluetoothResultCallback callback,
+		const std::string &adapterAddress)
 {
 	BT_DEBUG("[%s](%d) called\n", __FUNCTION__, __LINE__);
-	auto localService = findLocalService(service);
+	auto localService = findLocalService(service, adapterAddress);
 	if (!localService)
 	{
 		BT_ERROR("GATT_FAILED_TO_WRITE_DESC", 0, "Failed to write descriptor %s for characteristic %s from local service %s: unknown service",
@@ -4009,11 +4080,11 @@ void BluetoothGattProfileService::writeLocalDescriptor(
 		return;
 	}
 
-	auto localServer = findLocalServerByServiceId(localService->id);
+	auto localServer = findLocalServerByServiceId(localService->id, adapterAddress);
 	if (localServer)
 	{
 		BluetoothGattCharacteristic gattCharacteristic = localService->getParentCharacteristic(descriptor.getHandle());
-		getImpl<BluetoothGattProfile>()->notifyDescriptorValueChanged(localServer->id, localService->id, descriptor.getHandle(), descriptor, gattCharacteristic.getHandle());
+		getImpl<BluetoothGattProfile>(adapterAddress)->notifyDescriptorValueChanged(localServer->id, localService->id, descriptor.getHandle(), descriptor, gattCharacteristic.getHandle());
 	}
 	localService->desc.updateDescriptorValue(characteristic, descriptor.getUuid(), descriptor.getValue());
 	safe_callback(callback, BLUETOOTH_ERROR_NONE);
@@ -4022,7 +4093,7 @@ void BluetoothGattProfileService::writeLocalDescriptor(
 void BluetoothGattProfileService::characteristicValueReadRequested(uint32_t requestId, const std::string &address, uint16_t server_if, uint16_t charId)
 {
 	BT_INFO("BLE", 0, "[%s](%d) called\n", __FUNCTION__, __LINE__);
-	auto localService = findLocalServiceByCharId(charId);
+	auto localService = findLocalServiceByCharId(charId, getManager()->getAddress());
 	if (!localService)
 	{
 		BT_ERROR("INVALID_STATE", 0, "Didn't found service id %d to process read request from remote device %s",
@@ -4035,7 +4106,7 @@ void BluetoothGattProfileService::characteristicValueReadRequested(uint32_t requ
 	}
 
 	BluetoothGattCharacteristic characteristic;
-	if (!getLocalCharacteristic(charId, characteristic))
+	if (!getLocalCharacteristic(charId, characteristic, getManager()->getAddress()))
 	{
 		BT_ERROR("INVALID_STATE", 0, "Didn't found characteristic id %d to process read request from remote device %s",
 				charId, address.c_str());
@@ -4050,7 +4121,7 @@ void BluetoothGattProfileService::characteristicValueReadRequested(uint32_t requ
 void BluetoothGattProfileService::characteristicValueWriteRequested(uint32_t requestId, const std::string &address, uint16_t server_if, uint16_t charId, const BluetoothGattValue &value, bool response)
 {
 	BT_INFO("BLE", 0, "[%s](%d) called\n", __FUNCTION__, __LINE__);
-	auto localService = findLocalServiceByCharId(charId);
+	auto localService = findLocalServiceByCharId(charId, getManager()->getAddress());
 	if (!localService)
 	{
 		BT_ERROR("INVALID_STATE", 0, "Didn't found service id %d to process read request from remote device %s",
@@ -4063,7 +4134,7 @@ void BluetoothGattProfileService::characteristicValueWriteRequested(uint32_t req
 	}
 
 	BluetoothGattCharacteristic characteristic;
-	if (!getLocalCharacteristic(charId, characteristic))
+	if (!getLocalCharacteristic(charId, characteristic, getManager()->getAddress()))
 	{
 		BT_ERROR("INVALID_STATE", 0, "Didn't found characteristic id %d to process read request from remote device %s",
 				charId, address.c_str());

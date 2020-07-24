@@ -399,21 +399,25 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 	LocalServer* findLocalServer(uint16_t server_if);
 	LocalService* findLocalService(const BluetoothUuid &uuid);
 	LocalService* findLocalService(uint16_t server_if);
-	LocalServer* findLocalServerByServiceId(uint16_t serviceId);
-	LocalService* findLocalServiceByCharId(uint16_t charId);
+	LocalService* findLocalService(const BluetoothUuid &uuid, const std::string &adapterAddress);
+	LocalService* findLocalService(uint16_t server_if, const std::string &adapterAddress);
+	LocalServer* findLocalServerByServiceId(uint16_t serviceId, const std::string &adapterAddress);
+	LocalService* findLocalServiceByCharId(uint16_t charId,  const std::string &adapterAddress);
 	LocalServer* getLocalServer(const std::string &serverUuid);
-	BluetoothGattService getLocalService(const std::string &serviceUuid);
+	BluetoothGattService getLocalService(const std::string &serviceUuid, const std::string &adapterAddress);
 	BluetoothGattServiceList getLocalServices();
 
-	bool getLocalCharacteristic(const uint16_t &handle, BluetoothGattCharacteristic &characteristic);
-	bool getLocalDescriptor(const uint16_t &handle, BluetoothGattDescriptor &descriptor);
+	bool getLocalCharacteristic(const uint16_t &handle, BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress);
+	bool getLocalDescriptor(const uint16_t &handle, BluetoothGattDescriptor &descriptor, const std::string &adapterAddress);
 
 	void writeLocalCharacteristic(
 			const BluetoothGattCharacteristic &characteristic,
-			BluetoothResultCallback callback);
+			BluetoothResultCallback callback,
+			const std::string &adapterAddress);
 	void writeLocalDescriptor(
 			const BluetoothGattDescriptor &descriptor,
-			BluetoothResultCallback callback);
+			BluetoothResultCallback callback,
+			const std::string &adapterAddress);
 
 	void readLocalCharacteristics(
 			const BluetoothUuid &service,
@@ -426,11 +430,13 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 
 	void writeLocalCharacteristic(const BluetoothUuid &service,
 			const BluetoothGattCharacteristic &characteristic,
-			BluetoothResultCallback callback);
+			BluetoothResultCallback callback,
+			const std::string &adapterAddress);
 	void writeLocalDescriptor(const BluetoothUuid& service,
 			const BluetoothUuid &characteristic,
 			const BluetoothGattDescriptor &descriptor,
-			BluetoothResultCallback callback);
+			BluetoothResultCallback callback,
+			const std::string &adapterAddress);
 
 	// observer
 	void characteristicValueReadRequested(uint32_t requestId, const std::string &address, uint16_t server_if, uint16_t charId);
@@ -522,9 +528,9 @@ private:
 	bool parseValue(pbnjson::JValue valueObj, BluetoothGattValue *value);
 	void handleMonitorCharacteristicClientDropped(MonitorCharacteristicSubscriptionInfo &subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch);
 	void handleMonitorCharacteristicsClientDropped(MonitorCharacteristicSubscriptionInfo &subscriptionInfo, LSUtils::ClientWatch *monitorCharacteristicsWatch);
-	bool isDescriptorValid(const std::string &address, const uint16_t &handle, BluetoothGattDescriptor &descriptor);
+	bool isDescriptorValid(const std::string &address, const uint16_t &handle, BluetoothGattDescriptor &descriptor, const std::string &adapterAddress);
 	bool isDescriptorValid(const std::string &address, const std::string &serviceUuid, const std::string &descriptorUuuid,
-	                       const std::string &characteristicUuid, BluetoothGattDescriptor &descriptor);
+	                       const std::string &characteristicUuid, BluetoothGattDescriptor &descriptor, const std::string &adapterAddress);
 	void removeSubscriptionPoint(const std::string &adapterAddress, const std::string &address);
 
 	std::unordered_map<std::string, LS::SubscriptionPoint*> mGetServicesSubscriptions;
