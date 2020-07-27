@@ -253,8 +253,11 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_AVRCP_START_INDEX_PARAM_MISSING, "Required 'startIndex' parameter is not supplied"},
 	{BT_ERR_AVRCP_END_INDEX_PARAM_MISSING, "Required 'endIndex' parameter is not supplied"},
 	{BT_ERR_AVRCP_ITEM_PATH_PARAM_MISSING, "Required 'itemPath' parameter is not supplied"},
-	{BT_ERR_AVRCP_SEARCH_STRING_PARAM_MISSING, "Required 'searchString' parameter is not supplied"}
-	{BT_ERR_MAP_INSTANCE_ALREADY_CONNECTED, "The supplied instance already connected"}
+	{BT_ERR_AVRCP_SEARCH_STRING_PARAM_MISSING, "Required 'searchString' parameter is not supplied"},
+	{BT_ERR_MAP_INSTANCE_ALREADY_CONNECTED, "The supplied instance already connected"},
+	{BT_ERR_MAP_STATUS_INDICATOR_PARAM_MISSING,"Required 'statusIndicator' parameter is not supplied"},
+	{BT_ERR_MAP_STATUS_VALUE_PARAM_MISSING, "Required 'statusValue' parameter is not supplied"},
+	{BT_ERR_MAP_HANDLE_PARAM_MISSING, "Required 'handle' parameter is not supplied"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)

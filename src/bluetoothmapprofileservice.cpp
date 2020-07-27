@@ -50,6 +50,7 @@ BluetoothMapProfileService::BluetoothMapProfileService(BluetoothManagerService *
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getFolderList)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, setFolder)
 		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, getMessage)
+		LS_CATEGORY_CLASS_METHOD(BluetoothMapProfileService, setMessageStatus)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/map", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -1296,4 +1297,81 @@ std::string BluetoothMapProfileService::buildStorageDirPath(const std::string &p
 	}
 	result += path;
 	return result;
+}
+
+bool BluetoothMapProfileService::setMessageStatus(LSMessage &message)
+{
+	BT_INFO("MAP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	std::string adapterAddress;
+
+	if (!isSetMessageStatusSchemaAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	std::string address = requestObj["address"].asString();
+	std::string sessionId = requestObj["sessionId"].asString();
+	std::string sessionKey;
+
+	if(!isSessionIdValid(adapterAddress, address, sessionId, sessionKey))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_NOT_EXIST);
+		return true;
+	}
+
+	std::string messageHandle = requestObj["handle"].asString();
+	std::string statusIndicator = requestObj["statusIndicator"].asString();
+	bool statusValue = requestObj["statusValue"].asBool();
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+
+	auto setMessageStatusCallback = [ = ](BluetoothError error) {
+		LS::Message request(requestMessage);
+
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(request, error);
+			return;
+		}
+		pbnjson::JValue responseObj = pbnjson::Object();
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", address);
+		responseObj.put("returnValue", true);
+		LSUtils::postToClient(request, responseObj);
+		LSMessageUnref(request.get());
+	};
+	getImpl<BluetoothMapProfile>(adapterAddress)->setMessageStatus(sessionKey, messageHandle, statusIndicator, statusValue, setMessageStatusCallback);
+	return true;
+}
+
+bool BluetoothMapProfileService::isSetMessageStatusSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress)
+{
+	int parseError = 0;
+	const std::string schema = STRICT_SCHEMA(PROPS_6(PROP(address, string), PROP(adapterAddress, string), PROP(sessionId, string), PROP(handle, string), PROP(statusIndicator, string), PROP(statusValue, boolean))  REQUIRED_5(address, handle, statusIndicator, sessionId, statusValue));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_ADDR_PARAM_MISSING);
+		else if (!requestObj.hasKey("sessionId"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_SESSION_ID_PARAM_MISSING);
+		else if (!requestObj.hasKey("handle"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_HANDLE_PARAM_MISSING);
+		else if (!requestObj.hasKey("statusIndicator"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_STATUS_INDICATOR_PARAM_MISSING);
+		else if (!requestObj.hasKey("statusValue"))
+			LSUtils::respondWithError(request, BT_ERR_MAP_STATUS_VALUE_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return false;
+	}
+
+	if(!requiredCheckForMapProfile(request, requestObj, adapterAddress))
+		return false;
+
+	return true;
 }

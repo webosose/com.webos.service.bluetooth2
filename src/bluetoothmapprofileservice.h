@@ -29,6 +29,7 @@ public:
 	bool getFolderList(LSMessage &message);
 	bool setFolder(LSMessage &message);
 	bool getMessage(LSMessage &message);
+	bool setMessageStatus(LSMessage &message);
 	void handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &sessionKey);
 	void propertiesChanged(const std::string &adapterAddress, const std::string &sessionKey, BluetoothPropertiesList properties);
 private:
@@ -64,9 +65,9 @@ private:
 	void appendMessageList(pbnjson::JValue &responseObject , BluetoothMessageList& messageList);
 	bool isGetMessageSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	std::string buildStorageDirPath(const std::string &path, const std::string &address);
+	bool isSetMessageStatusSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	std::map<std::string, std::map<std::string, std::string>> mConnectedDevicesForMultipleAdaptersWithSessionKey;
 	std::map<std::string, std::map<std::string, LS::SubscriptionPoint*>> mMapGetStatusSubscriptionsForMultipleAdapters;
 	std::map<std::string, std::map<std::string, LSUtils::ClientWatch*>> mConnectWatchesForMultipleAdaptersWithSessionKey;
-
 };
 #endif // BLUETOOTHMAPPROFILESERVICE_H
