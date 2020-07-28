@@ -45,6 +45,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_TETHERING_ALREADY_DISABLED, "Tethering is already disabled"},
 	{BLUETOOTH_ERROR_ALREADY_CONNECTED_ONE_DEVICE, "One headset already connected to this adapter please check in device/getStatus"},
 	{BLUETOOTH_ERROR_PBAP_CALL_SELECT_FOLDER_TYPE, "No folder is selected"},
+	{BLUETOOTH_ERROR_AVRCP_ITEM_NOT_PLAYABLE, "Item is not playable"},
+	{BLUETOOTH_ERROR_AVRCP_NOT_A_FOLDER, "Item is not a folder"},
 	{BLUETOOTH_ERROR_MAP_FOLDER_NOT_FOUND, "Requested folder is not found"}
 };
 
