@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +42,8 @@ namespace LSUtils
 	class ClientWatch;
 }
 
+class BluetoothClientWatch;
+
 class BluetoothOppProfileService : public BluetoothProfileService,
                                    public BluetoothOppStatusObserver
 {
@@ -50,15 +52,18 @@ public:
 	~BluetoothOppProfileService();
 
 	void initialize();
+	void initialize(const std::string &adapterAddress);
 	bool isDevicePaired(const std::string &address);
 	bool pushFile(LSMessage &message);
 	bool awaitTransferRequest(LSMessage &message);
 	bool acceptTransferRequest(LSMessage &message);
 	bool rejectTransferRequest(LSMessage &message);
 	bool cancelTransfer(LSMessage &message);
-	void transferConfirmationRequested(BluetoothOppTransferId transferId, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize);
+	void transferConfirmationRequested(BluetoothOppTransferId transferId, const std::string &adapterAddress, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize);
 	void transferStateChanged(BluetoothOppTransferId transferId, uint64_t transferred, bool finished);
 	bool monitorTransfer(LSMessage &message);
+	bool addClientWatch(LS::Message& request, std::list<BluetoothClientWatch*>* clientWatch,
+		std::string adapterAddress, std::string deviceAddress);
 
 private:
 	class Transfer
@@ -81,6 +86,7 @@ private:
 		~PushRequest();
 
 		std::string requestId;
+		std::string adapterAddress;
 		std::string address;
 		std::string name;
 		std::string fileName;
@@ -98,7 +104,7 @@ private:
 
 	void notifyClientTransferStarts(LS::Message &request, const std::string &adapterAddress);
 	void notifyClientTransferCanceled(LS::Message &request, const std::string &adapterAddress);
-	void notifyTransferStatus();
+	void notifyTransferStatus(const std::string &adapterAddress);
 
 	void appendTransferStatus(pbnjson::JValue &object);
 
@@ -113,28 +119,29 @@ private:
 	void cancelTransfer(BluetoothOppTransferId id, bool clientDisappeared = false);
 	std::string buildStorageDirPath(const std::string &path);
 
-	LSUtils::ClientWatch *mIncomingTransferWatch;
 	PushRequest* findRequest(const std::string &requestIdStr);
 	uint64_t getPushRequestId(const std::string &requestIdStr);
 	void deleteTransferId(uint64_t requestId);
 	void deleteTransferId(const std::string &requestIdStr);
 	BluetoothOppTransferId findTransferId(const std::string &requestIdStr);
 	bool prepareConfirmationRequest(LS::Message &request, pbnjson::JValue &requestObj, bool accept);
-	void createPushRequest(BluetoothOppTransferId transferId, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize);
+	void createPushRequest(BluetoothOppTransferId transferId, const std::string &adapterAddress, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize);
 	std::string generateRequestId();
 	void deletePushRequest(const std::string &requestId);
 	void assignPushRequestId(PushRequest *pushRequest);
 	void assignPushRequestFromUnused(PushRequest *pushRequest);
-	bool notifyTransferListenerDropped();
-	void setTransferRequestsAllowed(bool state);
+	void setTransferRequestsAllowed(const std::string &adapterAddress, bool state);
 	void notifyTransferConfirmation(uint64_t requestId);
 	void notifyConfirmationRequest(LS::Message &request, const std::string &adapterAddress, bool success);
+	void removeClientWatch(std::list<BluetoothClientWatch*> *clientWatch, const std::string& senderName);
+	void handleClientDisappeared(std::list<BluetoothClientWatch*>* clientWatch, const std::string senderName);
 
 private:
-	bool mTransferRequestsAllowed;
 	uint64_t mRequestIndex;
 	uint32_t mNextRequestId;
-	LS::SubscriptionPoint mMonitorTransferSubscriptions;
+	std::list<BluetoothClientWatch*> mIncomingTransferWatchesForMultipleAdapters;
+	std::map<std::string, bool> mTransferRequestsAllowed;
+	std::map<std::string, LS::SubscriptionPoint*> mMonitorTransferSubscriptions;
 };
 
 #endif // BLUETOOTHOPPPROFILESERVICE_H

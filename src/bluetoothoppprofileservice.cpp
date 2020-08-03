@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "logging.h"
 #include "utils.h"
 #include "config.h"
+#include "bluetoothclientwatch.h"
 
 #define BLUETOOTH_PROFILE_OPP_MAX_REQUEST_ID 999
 
@@ -37,8 +38,6 @@ BluetoothOppProfileService::Transfer::~Transfer()
 
 BluetoothOppProfileService::BluetoothOppProfileService(BluetoothManagerService *manager) :
         BluetoothProfileService(manager, "OPP", "00001105-0000-1000-8000-00805f9b34fb"),
-        mIncomingTransferWatch(0),
-        mTransferRequestsAllowed(0),
         mRequestIndex(0),
         mNextRequestId(1)
 {
@@ -57,7 +56,6 @@ BluetoothOppProfileService::BluetoothOppProfileService(BluetoothManagerService *
 	manager->registerCategory("/opp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/opp", this);
 
-	mMonitorTransferSubscriptions.setServiceHandle(manager);
 }
 
 BluetoothOppProfileService::~BluetoothOppProfileService()
@@ -73,6 +71,14 @@ void BluetoothOppProfileService::initialize()
 
 	if (mImpl)
 		getImpl<BluetoothOppProfile>()->registerObserver(this);
+}
+
+void BluetoothOppProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	if (findImpl(adapterAddress))
+		getImpl<BluetoothOppProfile>(adapterAddress)->registerObserver(this);
 }
 
 bool BluetoothOppProfileService::isDevicePaired(const std::string &address)
@@ -91,9 +97,6 @@ void BluetoothOppProfileService::cancelTransfer(BluetoothOppTransferId id, bool 
 	Transfer *transfer = transferIter->second;
 
 	BT_DEBUG("Cancel OPP transfer %llu for device %s", id, transfer->deviceAddress.c_str());
-
-	if (!mImpl && !getImpl<BluetoothOppProfile>())
-		return;
 
 	// To block anybody else from deleting the transfer mark
 	// it has canceled
@@ -259,12 +262,6 @@ bool BluetoothOppProfileService::prepareFileTransfer(LS::Message &request, pbnjs
 {
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothOppProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return false;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(address, string), PROP(sourceFile, string),
                                               PROP_WITH_VAL_1(subscribe, boolean, true), PROP(adapterAddress, string))
                                               REQUIRED_2(address, sourceFile));
@@ -336,7 +333,7 @@ void BluetoothOppProfileService::notifyClientTransferCanceled(LS::Message &reque
 	LSUtils::postToClient(request, responseObj);
 }
 
-void BluetoothOppProfileService::notifyTransferStatus()
+void BluetoothOppProfileService::notifyTransferStatus(const std::string &adapterAddress)
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -345,7 +342,18 @@ void BluetoothOppProfileService::notifyTransferStatus()
 
 	appendTransferStatus(responseObj);
 
-	LSUtils::postToSubscriptionPoint(&mMonitorTransferSubscriptions, responseObj);
+	LS::SubscriptionPoint* subscriptionPoint;
+
+	auto itr = mMonitorTransferSubscriptions.find(adapterAddress);
+	if(itr != mMonitorTransferSubscriptions.end())
+	{
+		subscriptionPoint = itr->second;
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("subscribed", true);
+		responseObj.put("returnValue", true);
+
+		LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
+	}
 }
 
 void BluetoothOppProfileService::appendTransferStatus(pbnjson::JValue &object)
@@ -361,7 +369,7 @@ void BluetoothOppProfileService::appendTransferStatus(pbnjson::JValue &object)
 		{
 			PushRequest *requestVal = iterRequest->second;
 
-			responseObj.put("adapterAddress", getManager()->getAddress());
+			responseObj.put("adapterAddress", requestVal->adapterAddress);
 			responseObj.put("requestId", requestVal->requestId);
 			responseObj.put("address", requestVal->address);
 			responseObj.put("name", requestVal->name);
@@ -408,18 +416,12 @@ bool BluetoothOppProfileService::pushFile(LSMessage &message)
 	BluetoothOppTransferId transferId = BLUETOOTH_OPP_TRANSFER_ID_INVALID;
 	notifyClientTransferStarts(request, adapterAddress);
 
-	transferId = getImpl<BluetoothOppProfile>()->pushFile(deviceAddress, sourceFile,
+	transferId = getImpl<BluetoothOppProfile>(adapterAddress)->pushFile(deviceAddress, sourceFile,
 		std::bind(&BluetoothOppProfileService::handleFileTransferUpdate, this, requestMessage, adapterAddress, _1, _2, _3, _4));
 
 	createTransfer(transferId, deviceAddress, adapterAddress, requestMessage);
 
 	return true;
-}
-
-bool BluetoothOppProfileService::notifyTransferListenerDropped()
-{
-	setTransferRequestsAllowed(false);
-	return false;
 }
 
 bool BluetoothOppProfileService::awaitTransferRequest(LSMessage &message)
@@ -446,12 +448,6 @@ bool BluetoothOppProfileService::awaitTransferRequest(LSMessage &message)
 		return true;
 	}
 
-	if (mIncomingTransferWatch)
-	{
-		LSUtils::respondWithError(request, BT_ERR_ALLOW_ONE_SUBSCRIBE);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
@@ -462,11 +458,26 @@ bool BluetoothOppProfileService::awaitTransferRequest(LSMessage &message)
 		return true;
 	}
 
-	mIncomingTransferWatch = new LSUtils::ClientWatch(getManager()->get(), &message, [this]() {
-                notifyTransferListenerDropped();
-        });
+	for (auto incomingTransferWatch: mIncomingTransferWatchesForMultipleAdapters)
+	{
+		if(adapterAddress == incomingTransferWatch->getAdapterAddress())
+		{
+			LSUtils::respondWithError(request, BT_ERR_ALLOW_ONE_SUBSCRIBE);
+			return true;
+		}
+	}
 
-	setTransferRequestsAllowed(true);
+	if (request.isSubscription())
+	{
+		bool retVal = addClientWatch(request, &mIncomingTransferWatchesForMultipleAdapters,
+			adapterAddress, "");
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
+	}
+	setTransferRequestsAllowed(adapterAddress, true);
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -474,9 +485,62 @@ bool BluetoothOppProfileService::awaitTransferRequest(LSMessage &message)
 	responseObj.put("subscribed", true);
 	responseObj.put("returnValue", true);
 
-	LSUtils::postToClient(mIncomingTransferWatch->getMessage(), responseObj);
+	LSUtils::postToClient(request, responseObj);
 
 	return true;
+}
+
+bool BluetoothOppProfileService::addClientWatch(LS::Message& request, std::list<BluetoothClientWatch*>* clientWatch,
+	std::string adapterAddress, std::string deviceAddress)
+{
+	const char* senderName = LSMessageGetApplicationID(request.get());
+	if (senderName == NULL)
+	{
+		senderName = LSMessageGetSenderServiceName(request.get());
+		if (senderName == NULL)
+		{
+			return false;
+		}
+	}
+	auto watch = new BluetoothClientWatch(getManager()->get(), request.get(),
+		std::bind(&BluetoothOppProfileService::handleClientDisappeared,
+			this, clientWatch, senderName), adapterAddress, deviceAddress);
+	clientWatch->push_back(watch);
+	return true;
+}
+
+void BluetoothOppProfileService::handleClientDisappeared(std::list<BluetoothClientWatch*>* clientWatch, const std::string senderName)
+{
+	removeClientWatch(clientWatch, senderName);
+}
+
+void BluetoothOppProfileService::removeClientWatch(std::list<BluetoothClientWatch*> *clientWatch, const std::string& senderName)
+{
+	auto watch = clientWatch->begin();
+	while (watch != clientWatch->end())
+	{
+		const char* senderNameWatch = LSMessageGetApplicationID((*watch)->getMessage());
+		if (senderNameWatch == NULL)
+		{
+			senderNameWatch = LSMessageGetSenderServiceName((*watch)->getMessage());
+			if (senderNameWatch == NULL)
+			{
+				return;
+			}
+		}
+
+		if (senderName == senderNameWatch)
+		{
+			auto watchToRemove = watch;
+			setTransferRequestsAllowed((*watch)->getAdapterAddress(),false);
+			delete (*watchToRemove);
+			watch = clientWatch->erase(watch);
+		}
+		else
+		{
+			++watch;
+		}
+	}
 }
 
 bool BluetoothOppProfileService::monitorTransfer(LSMessage &message)
@@ -514,28 +578,36 @@ bool BluetoothOppProfileService::monitorTransfer(LSMessage &message)
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
-	mMonitorTransferSubscriptions.subscribe(request);
+	LS::SubscriptionPoint* subscriptionPoint;
+	auto itr = mMonitorTransferSubscriptions.find(adapterAddress);
+	if(itr == mMonitorTransferSubscriptions.end())
+	{
+		subscriptionPoint = new LS::SubscriptionPoint;
+		mMonitorTransferSubscriptions.insert({adapterAddress,subscriptionPoint});
+		subscriptionPoint->setServiceHandle(getManager());
+		subscriptionPoint->subscribe(request);
+	} else {
+		subscriptionPoint = itr->second;
+		subscriptionPoint->subscribe(request);
+	}
 
 	responseObj.put("adapterAddress", adapterAddress);
 	responseObj.put("subscribed", true);
 	responseObj.put("returnValue", true);
 
-	LSUtils::postToSubscriptionPoint(&mMonitorTransferSubscriptions, responseObj);
+	LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
 
 	return true;
 }
 
-void BluetoothOppProfileService::setTransferRequestsAllowed(bool state)
+void BluetoothOppProfileService::setTransferRequestsAllowed(const std::string &adapterAddress, bool state)
 {
-	BT_DEBUG("Setting transferable to %d", state);
+	BT_DEBUG("Setting transferable to adapterAddress %s state %d",adapterAddress.c_str(), state);
+	if (mTransferRequestsAllowed.find(adapterAddress) != mTransferRequestsAllowed.end())
+		mTransferRequestsAllowed[adapterAddress] = state;
+	else
+		mTransferRequestsAllowed.insert(std::pair<std::string, int>(adapterAddress, state));
 
-	if (!state && mIncomingTransferWatch)
-	{
-		delete mIncomingTransferWatch;
-		mIncomingTransferWatch = 0;
-	}
-
-	mTransferRequestsAllowed = state;
 }
 
 std::string BluetoothOppProfileService::generateRequestId()
@@ -614,9 +686,10 @@ void BluetoothOppProfileService::assignPushRequestFromUnused(PushRequest *pushRe
 	mPushRequests.erase(eraseIter);
 }
 
-void BluetoothOppProfileService::createPushRequest(BluetoothOppTransferId transferId, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize)
+void BluetoothOppProfileService::createPushRequest(BluetoothOppTransferId transferId, const std::string &adapterAddress, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize)
 {
 	PushRequest *pushRequest = new PushRequest();
+	pushRequest->adapterAddress = adapterAddress;
 	pushRequest->address = address;
 	pushRequest->name = deviceName;
 	pushRequest->fileName = fileName;
@@ -645,28 +718,43 @@ void BluetoothOppProfileService::notifyTransferConfirmation(uint64_t requestInde
 		PushRequest * pushRequest = requestIter->second;
 
 		pbnjson::JValue responseObj = pbnjson::Object();
-		responseObj.put("adapterAddress", getManager()->getAddress());
+		responseObj.put("adapterAddress", pushRequest->adapterAddress);
 		responseObj.put("requestId", pushRequest->requestId);
 		responseObj.put("address", pushRequest->address);
 		responseObj.put("name", pushRequest->name);
 		responseObj.put("fileName", pushRequest->fileName);
 		responseObj.put("fileSize", (int64_t) pushRequest->fileSize);
 		object.put("request", responseObj);
-		LSUtils::postToClient(mIncomingTransferWatch->getMessage(), object);
+
+		for (auto incomingTransferWatch: mIncomingTransferWatchesForMultipleAdapters)
+		{
+
+			if(pushRequest->adapterAddress == incomingTransferWatch->getAdapterAddress())
+			{
+				LSUtils::postToClient(incomingTransferWatch->getMessage(), object);
+				return;
+			}
+		}
 	}
 }
 
-void BluetoothOppProfileService::transferConfirmationRequested(BluetoothOppTransferId transferId, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize)
+void BluetoothOppProfileService::transferConfirmationRequested(BluetoothOppTransferId transferId, const std::string &adapterAddress, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize)
 {
-	BT_DEBUG("Received transfer request from %s and file %s with size %llu", address.c_str(), deviceName.c_str(), fileSize);
+	BT_DEBUG("Received transfer request from adapter %s device %s and file %s with size %llu", adapterAddress.c_str(), address.c_str(), deviceName.c_str(), fileSize);
 
-	if (!mTransferRequestsAllowed)
+	if (mTransferRequestsAllowed.find(adapterAddress) == mTransferRequestsAllowed.end())
 	{
 		BT_DEBUG("Not allowed to accept incoming transfer request");
 		return;
 	}
 
-	createPushRequest(transferId, address, deviceName, fileName, fileSize);
+	if (!mTransferRequestsAllowed[adapterAddress])
+	{
+		BT_DEBUG("Not allowed to accept incoming transfer request");
+		return;
+	}
+
+	createPushRequest(transferId, adapterAddress, address, deviceName, fileName, fileSize);
 }
 
 void BluetoothOppProfileService::notifyConfirmationRequest(LS::Message &request, const std::string &adapterAddress, bool success)
@@ -777,7 +865,6 @@ void BluetoothOppProfileService::transferStateChanged(BluetoothOppTransferId tra
 
 		if (!pushRequest)
 		{
-			LSUtils::respondWithError(mIncomingTransferWatch->getMessage(), BT_ERR_OPP_REQUESTID_NOT_EXIST);
 			return;
 		}
 
@@ -791,7 +878,7 @@ void BluetoothOppProfileService::transferStateChanged(BluetoothOppTransferId tra
 			}
 			else
 			{
-				notifyTransferStatus();
+				notifyTransferStatus(pushRequest->adapterAddress);
 				deleteTransferId(requestListIndex);
 				deletePushRequest(pushRequest->requestId);
 				return;
@@ -800,7 +887,7 @@ void BluetoothOppProfileService::transferStateChanged(BluetoothOppTransferId tra
 
 		pushRequest->transferred += transferred;
 
-		notifyTransferStatus();
+		notifyTransferStatus(pushRequest->adapterAddress);
 
 		if (pushRequest->transferred == pushRequest->fileSize)
 		{
@@ -813,12 +900,6 @@ void BluetoothOppProfileService::transferStateChanged(BluetoothOppTransferId tra
 bool BluetoothOppProfileService::prepareConfirmationRequest(LS::Message &request, pbnjson::JValue &requestObj, bool accept)
 {
 	int parseError = 0;
-
-	if (!mImpl && !getImpl<BluetoothOppProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
 
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(requestId, string), PROP(adapterAddress, string)) REQUIRED_1(requestId));
 
@@ -836,15 +917,27 @@ bool BluetoothOppProfileService::prepareConfirmationRequest(LS::Message &request
 		return true;
 	}
 
-	if (!mTransferRequestsAllowed)
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothOppProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	if (mTransferRequestsAllowed.find(adapterAddress) == mTransferRequestsAllowed.end())
 	{
 		LSUtils::respondWithError(request, BT_ERR_OPP_TRANSFER_NOT_ALLOWED);
 		return true;
 	}
 
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+	if (!mTransferRequestsAllowed[adapterAddress])
+	{
+		LSUtils::respondWithError(request, BT_ERR_OPP_TRANSFER_NOT_ALLOWED);
 		return true;
+	}
 
 	std::string requestIdStr = requestObj["requestId"].asString();
 
@@ -880,7 +973,7 @@ bool BluetoothOppProfileService::prepareConfirmationRequest(LS::Message &request
 		else
 			notifyConfirmationRequest(request, adapterAddress, true);
 	};
-	getImpl<BluetoothOppProfile>()->supplyTransferConfirmation(transferId, accept, transferCallback);
+	getImpl<BluetoothOppProfile>(adapterAddress)->supplyTransferConfirmation(transferId, accept, transferCallback);
 
 	if (!accept)
 		deleteTransferId(requestIdStr);
@@ -910,12 +1003,6 @@ bool BluetoothOppProfileService::cancelTransfer(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothOppProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(requestId, string), PROP(adapterAddress, string)) REQUIRED_1(requestId));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
@@ -936,9 +1023,21 @@ bool BluetoothOppProfileService::cancelTransfer(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	if (!getImpl<BluetoothOppProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	std::string requestIdStr = requestObj["requestId"].asString();
 
-	if (!mTransferRequestsAllowed)
+	if (mTransferRequestsAllowed.find(adapterAddress) == mTransferRequestsAllowed.end())
+	{
+		LSUtils::respondWithError(request, BT_ERR_OPP_TRANSFER_NOT_ALLOWED);
+		return true;
+	}
+
+	if (!mTransferRequestsAllowed[adapterAddress])
 	{
 		LSUtils::respondWithError(request, BT_ERR_OPP_TRANSFER_NOT_ALLOWED);
 		return true;
@@ -978,7 +1077,7 @@ bool BluetoothOppProfileService::cancelTransfer(LSMessage &message)
 			notifyConfirmationRequest(request, adapterAddress, true);
 		}
 	};
-	getImpl<BluetoothOppProfile>()->cancelTransfer(transferId, cancelTransferCallback);
+	getImpl<BluetoothOppProfile>(adapterAddress)->cancelTransfer(transferId, cancelTransferCallback);
 
 	return true;
 }
