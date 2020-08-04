@@ -77,6 +77,7 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getNumberOfItems)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getFolderItems)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, changePath)
+		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, playItem)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/avrcp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -3052,6 +3053,67 @@ bool BluetoothAvrcpProfileService::changePath(LSMessage &message)
 		return true;
 	}
 
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("address", deviceAddress);
+	responseObj.put("returnValue", true);
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
+
+bool BluetoothAvrcpProfileService::playItem(LSMessage &message)
+{
+	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string),
+													 PROP(address, string), PROP(itemPath, string))
+													 REQUIRED_2(address, itemPath));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
+		else if (!requestObj.hasKey("itemPath"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_ITEM_PATH_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothAvrcpProfile *impl = getImpl<BluetoothAvrcpProfile>(adapterAddress);
+
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+	std::string deviceAddress;
+	deviceAddress = convertToLower(requestObj["address"].asString());
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+	BluetoothError error = impl->playItem(requestObj["itemPath"].asString());
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
 	pbnjson::JValue responseObj = pbnjson::Object();
 
 	responseObj.put("adapterAddress", adapterAddress);

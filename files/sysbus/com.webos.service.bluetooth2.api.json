@@ -219,6 +219,7 @@
         "com.webos.service.bluetooth2/avrcp/browse/getNumberOfItems",
         "com.webos.service.bluetooth2/avrcp/browse/getFolderItems",
         "com.webos.service.bluetooth2/avrcp/browse/changePath",
+        "com.webos.service.bluetooth2/avrcp/browse/playItem",
         "com.webos.service.bluetooth2/gatt/addService",
         "com.webos.service.bluetooth2/gatt/closeServer",
         "com.webos.service.bluetooth2/gatt/connect",
