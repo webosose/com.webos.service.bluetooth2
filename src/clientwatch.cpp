@@ -16,6 +16,7 @@
 
 
 #include "clientwatch.h"
+#include "logging.h"
 
 namespace LSUtils
 {
@@ -87,8 +88,17 @@ void ClientWatch::startWatching()
 	const char *serviceName = LSMessageGetSender(mMessage);
 
 	LS::Error error;
+#ifdef MULTI_SESSION_SUPPORT
+	std::string session = LSMessageGetSessionId(mMessage);
+	BT_DEBUG("startWatching serviceName %s session id %s", serviceName, session.c_str());
+	const char *sessionId = (session == "host") ? NULL : session.c_str();
+
+	if (!LSRegisterSessionServerStatusEx(mHandle, serviceName, sessionId, &ClientWatch::serverStatusCallback,
+	                                     this, &mCookie, error.get()))
+#else
 	if (!LSRegisterServerStatusEx(mHandle, serviceName, &ClientWatch::serverStatusCallback,
 	                              this, &mCookie, error.get()))
+#endif
 		throw error;
 
 	if (!LSCallCancelNotificationAdd(mHandle, &ClientWatch::clientCanceledCallback, this, error.get()))
