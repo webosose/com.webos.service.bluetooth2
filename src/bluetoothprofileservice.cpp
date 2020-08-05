@@ -195,16 +195,18 @@ void BluetoothProfileService::markDeviceAsNotConnecting(const std::string &adapt
 
 bool BluetoothProfileService::isDeviceConnected(const std::string &address)
 {
-	return (std::find(mConnectedDevices.begin(), mConnectedDevices.end(), address) != mConnectedDevices.end());
+	return (std::find(mConnectedDevices.begin(), mConnectedDevices.end(),
+				convertToLower(address)) != mConnectedDevices.end());
 }
 
 bool BluetoothProfileService::isDeviceConnected(const std::string &adapterAddress, const std::string &address)
 {
-	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(adapterAddress);
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(convertToLower(adapterAddress));
 	if (connectedDevicesiter == mConnectedDevicesForMultipleAdapters.end())
 		return false;
 
-	return (std::find((connectedDevicesiter->second).begin(), (connectedDevicesiter->second).end(), address) != (connectedDevicesiter->second).end());
+	return (std::find((connectedDevicesiter->second).begin(), (connectedDevicesiter->second).end(),
+				convertToLower(address)) != (connectedDevicesiter->second).end());
 }
 
 void BluetoothProfileService::markDeviceAsConnected(const std::string &address)
@@ -212,28 +214,29 @@ void BluetoothProfileService::markDeviceAsConnected(const std::string &address)
 	if (isDeviceConnected(address))
 		return;
 
-	mConnectedDevices.push_back(address);
+	mConnectedDevices.push_back(convertToLower(address));
 }
 
 void BluetoothProfileService::markDeviceAsConnected(const std::string &adapterAddress, const std::string &address)
 {
-	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(adapterAddress);
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(convertToLower(adapterAddress));
 	if (connectedDevicesiter == mConnectedDevicesForMultipleAdapters.end())
 	{
 		std::vector<std::string> connectedDevices;
-		connectedDevices.push_back(address);
+		connectedDevices.push_back(convertToLower(address));
 
-		mConnectedDevicesForMultipleAdapters.insert(std::pair<std::string, std::vector<std::string>>(adapterAddress, connectedDevices));
+		mConnectedDevicesForMultipleAdapters.insert(std::pair<std::string, std::vector<std::string>>
+				(convertToLower(adapterAddress), connectedDevices));
 		return;
 	}
 
 	if (!isDeviceConnected(adapterAddress, address))
-		(connectedDevicesiter->second).push_back(address);
+		(connectedDevicesiter->second).push_back(convertToLower(address));
 }
 
 void BluetoothProfileService::markDeviceAsNotConnected(const std::string &address)
 {
-	auto deviceIter = std::find(mConnectedDevices.begin(), mConnectedDevices.end(), address);
+	auto deviceIter = std::find(mConnectedDevices.begin(), mConnectedDevices.end(), convertToLower(address));
 
 	if (deviceIter == mConnectedDevices.end())
 		return;
@@ -243,11 +246,11 @@ void BluetoothProfileService::markDeviceAsNotConnected(const std::string &addres
 
 void BluetoothProfileService::markDeviceAsNotConnected(const std::string &adapterAddress, const std::string &address)
 {
-	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(adapterAddress);
+	auto connectedDevicesiter = mConnectedDevicesForMultipleAdapters.find(convertToLower(adapterAddress));
 	if (connectedDevicesiter == mConnectedDevicesForMultipleAdapters.end())
 		return;
 
-	auto deviceIter = std::find((connectedDevicesiter->second).begin(), (connectedDevicesiter->second).end(), address);
+	auto deviceIter = std::find((connectedDevicesiter->second).begin(), (connectedDevicesiter->second).end(), convertToLower(address));
 
 	if (deviceIter == (connectedDevicesiter->second).end())
 		return;

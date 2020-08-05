@@ -468,9 +468,12 @@ public:
 
 	bool writeRemoteCharacteristic(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothGattCharacteristic &characteristicToWrite,
 			BluetoothResultCallback callback);
-	bool readRemoteCharacteristic(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const uint16_t characteristicHandle,
+	bool readRemoteCharacteristic(const std::string adapterAddress, const std::string deviceAddress,
+			const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid,
+			const uint16_t characteristicHandle,
 			BluetoothGattReadCharacteristicCallback callback);
-	bool readRemoteCharacteristics(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuidList &characteristicUuids,
+	bool readRemoteCharacteristics(const std::string adapterAddress, const std::string deviceAddress,
+			const BluetoothUuid &serviceUuid, const BluetoothUuidList &characteristicUuids,
 			BluetoothGattReadCharacteristicsCallback callback);
 	bool writeRemoteCharacteristic(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const BluetoothGattDescriptor &descriptorToWrite,
 				BluetoothResultCallback callback);
@@ -483,7 +486,6 @@ public:
 	virtual void connectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress);
 	virtual bool isDisconnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj);
 	virtual void disconnectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress);
-	virtual void connectionStateChanged(const std::string &address, bool connected);
 
 	void serviceFound(const std::string &address, const BluetoothGattService &service);
 	void serviceLost(const std::string &address, const BluetoothGattService &service);
@@ -495,10 +497,12 @@ public:
 	//Register the Service implementations with GattProfileService
 	void registerGattStatusObserver(BluetoothGattProfileService *statusObserver);
 protected:
-	bool getConnectId(uint16_t appId, uint16_t &connectId, std::string &deviceAddress);
+	bool getConnectId(uint16_t appId, uint16_t &connectId, std::string &deviceAddress, const std::string &adapterAddress);
 	bool isDevicePaired(const std::string &address);
-	bool isCharacteristicValid(const std::string &address, const uint16_t &handle, BluetoothGattCharacteristic *characteristic);
-	bool isCharacteristicValid(const std::string &address, const std::string &serviceUuid, const std::string &characteristicUuid, BluetoothGattCharacteristic *characteristic);
+	bool isCharacteristicValid(const std::string &adapterAddress, const std::string &address,
+			const uint16_t &handle, BluetoothGattCharacteristic *characteristic);
+	bool isCharacteristicValid(const std::string &adapterAddress, const std::string &address, const std::string &serviceUuid,
+			const std::string &characteristicUuid, BluetoothGattCharacteristic *characteristic);
 
 	virtual void notifyStatusSubscribers(const std::string &adapterAddress, const std::string &address, bool connected);
 	virtual pbnjson::JValue buildGetStatusResp(bool connected, bool connecting, bool subscribed, bool returnValue,
@@ -528,7 +532,7 @@ private:
 	std::unordered_map<std::string, bool> mDiscoveringServices;
 	std::vector<CharacteristicWatch*> mCharacteristicWatchList;
 	std::vector<BluetoothGattProfileService *> mGattObservers;
-	std::unordered_map<std::string, std::pair<std::string, bool>> mConnectedDevicesMap;
+	std::unordered_map<std::string, std::unordered_map<std::string, uint16_t>> mConnectedDevicesMap;
 	std::map<std::string, std::map<std::string, std::pair<LS::SubscriptionPoint*, GattConnSubsInfo*>>> mConnectSubsMap;
 	std::map<std::string, std::map<std::string, std::pair<LS::SubscriptionPoint*, GattStatusSubsInfo*>>> mGetStatusSubsMap;
 };

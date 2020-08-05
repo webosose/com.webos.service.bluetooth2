@@ -438,7 +438,20 @@ std::string BluetoothManagerService::getAddress() const
 	return mAddress;
 }
 
-//TODO Multi adapter support
+bool BluetoothManagerService::isDeviceAvailable(const std::string &adapterAddress, const std::string &address) const
+{
+	auto devices = findAdapterInfo(adapterAddress)->getDevices();
+	std::string convertedAddress = convertToLower(address);
+	auto deviceIter = devices.find(convertedAddress);
+	if (deviceIter == devices.end())
+		return false;
+	BluetoothDevice *device = deviceIter->second;
+	if(convertToLower(device->getAddress()) == convertedAddress)
+		return true;
+
+	return false;
+}
+
 bool BluetoothManagerService::isDeviceAvailable(const std::string &address) const
 {
 	auto devices = findAdapterInfo(mAddress)->getDevices();

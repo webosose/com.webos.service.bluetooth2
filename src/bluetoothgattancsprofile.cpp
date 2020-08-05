@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1300,7 +1300,7 @@ bool BluetoothGattAncsProfile::performNotificationAction(LSMessage &message)
 	value.push_back(actionId);
 
 	BluetoothGattCharacteristic characteristicToWrite;
-	if (!isCharacteristicValid(address, ANCS_UUID, CONTROL_POINT_UUID, &characteristicToWrite))
+	if (!isCharacteristicValid(adapterAddress, address, ANCS_UUID, CONTROL_POINT_UUID, &characteristicToWrite))
 	{
 		LSUtils::respondWithError(request, BT_ERR_ANCS_NOTIF_ACTION_NOT_ALLOWED);
 		return true;

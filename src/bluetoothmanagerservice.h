@@ -106,6 +106,7 @@ public:
 	BluetoothAdapter* getDefaultAdapter() const;
 	BluetoothAdapter* getAdapter(const std::string &adapterAddress);
 	bool isDeviceAvailable(const std::string &address) const;
+	bool isDeviceAvailable(const std::string &adapterAddress, const std::string &address) const;
 	std::string getAddress() const;
 
 	void initializeProfiles();
