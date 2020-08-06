@@ -427,12 +427,6 @@ bool BluetoothGattProfileService::discoverServices(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothGattProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string), PROP(address, string)));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
@@ -447,20 +441,15 @@ bool BluetoothGattProfileService::discoverServices(LSMessage &message)
 	}
 
 	std::string adapterAddress;
-	if (requestObj.hasKey("adapterAddress"))
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!getImpl<BluetoothGattProfile>(adapterAddress))
 	{
-		adapterAddress = requestObj["adapterAddress"].asString();
-		if (!getManager()->isAdapterAvailable(adapterAddress))
-		{
-			LSUtils::respondWithError(request, BT_ERR_INVALID_ADAPTER_ADDRESS);
-			return true;
-		}
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
 	}
-	else
-	{
-		//Use default adapter if adapterAddress is not passed by the user
-		adapterAddress = getManager()->getAddress();
-	}
+
 
 	std::string address;
 	bool remoteServiceDiscovery = false;
@@ -4175,8 +4164,8 @@ void BluetoothGattProfileService::handleConnectClientDisappeared(const uint16_t 
 	auto disconnectCallback = [this, clientId, address, adapterAddress](BluetoothError error) {
 
 		BT_INFO("BLE", 0, "[%s](%d) disconnect from device %s complete\n", __FUNCTION__, __LINE__, address.c_str());
-		markDeviceAsNotConnected(address);
-		markDeviceAsNotConnecting(address);
+		markDeviceAsNotConnected(adapterAddress,address);
+		markDeviceAsNotConnecting(adapterAddress,address);
 		mConnectedDevices.erase(clientId);
 		removeSubscriptionPoint(adapterAddress, address);
 	};
@@ -4270,7 +4259,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 				mConnectWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(address, watch));
 				subscribed = true;
 			}
-			markDeviceAsConnected(address);
+			markDeviceAsConnected(adapterAddress,address);
 			auto iterDevice = mConnectedDevices.find(appId);
 			if(iterDevice != mConnectedDevices.end())
 			{
@@ -4332,7 +4321,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 			return;
 		}
 
-		markDeviceAsConnecting(address);
+		markDeviceAsConnecting(adapterAddress,address);
 		notifyStatusSubscribers(adapterAddress, address, false);
 
 		auto connectCallback = [this, requestMessage, appId, adapterAddress, address, autoConnect](BluetoothError error, uint16_t connectId) {
@@ -4353,7 +4342,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 						LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
 						LSMessageUnref(request.get());
 
-						markDeviceAsNotConnecting(address);
+						markDeviceAsNotConnecting(adapterAddress,address);
 						notifyStatusSubscribers(adapterAddress, address, false);
 						return;
 					}
@@ -4373,7 +4362,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 						mConnectWatches.insert(std::pair<std::string, LSUtils::ClientWatch*>(address, watch));
 						subscribed = true;
 					}
-					markDeviceAsConnected(address);
+					markDeviceAsConnected(adapterAddress,address);
 					mConnectedDevices.insert(std::pair<uint16_t, connectedDeviceInfo*>(appId, new connectedDeviceInfo(address, 0)));
 
 					pbnjson::JValue responseObj = pbnjson::Object();
@@ -4402,7 +4391,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 				LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
 				LSMessageUnref(request.get());
 
-				markDeviceAsNotConnecting(address);
+				markDeviceAsNotConnecting(adapterAddress,address);
 				notifyStatusSubscribers(adapterAddress, address, false);
 				return;
 			}
@@ -4450,7 +4439,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 				subscriptionPoint->subscribe(request);
 				subscribed = true;
 			}
-			markDeviceAsConnected(address);
+			markDeviceAsConnected(adapterAddress,address);
 			mConnectedDevices.insert(std::pair<uint16_t, connectedDeviceInfo*>
 					(appId, new connectedDeviceInfo(address, connectId)));
 
@@ -4548,8 +4537,8 @@ void BluetoothGattProfileService::disconnectToStack(LS::Message &request, pbnjso
 		removeConnectWatchForDevice(adapterAddress, deviceAddress, true, false);
 		removeSubscriptionPoint(adapterAddress, deviceAddress);
 		mConnectedDevices.erase(appId);
-		markDeviceAsNotConnected(deviceAddress);
-		markDeviceAsNotConnecting(deviceAddress);
+		markDeviceAsNotConnected(adapterAddress,deviceAddress);
+		markDeviceAsNotConnecting(adapterAddress,deviceAddress);
 		LSMessageUnref(request.get());
 	};
 
