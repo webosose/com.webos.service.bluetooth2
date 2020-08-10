@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +52,8 @@ public:
 	~BluetoothSppProfileService();
 
 	void initialize();
+	void initialize(const std::string &adapterAddress);
+	void reset(const std::string &adapterAddress);
 	bool createChannel(LSMessage &message);
 	bool writeData(LSMessage &message);
 	bool readData(LSMessage &message);
@@ -65,11 +67,16 @@ public:
 	virtual pbnjson::JValue buildGetStatusResp(bool connected, bool connecting, bool subscribed, bool returnValue,
 	        std::string adapterAddress, std::string deviceAddress);
 
-	void channelStateChanged(const std::string &address, const std::string &uuid, BluetoothSppChannelId channelId, bool state);
-	void dataReceived(const BluetoothSppChannelId channelId, const uint8_t *data, const uint32_t size);
+	void channelStateChanged(const std::string &adapterAddress, const std::string &address, const std::string &uuid, BluetoothSppChannelId channelId, bool state);
+	void dataReceived(const BluetoothSppChannelId channelId, const std::string &adapterAddress, const uint8_t *data, const uint32_t size);
+
+protected:
+	std::map<std::string, ChannelManager*> mChannelImpls;
+
+	ChannelManager* findChannelImpl (const std::string &adapterAddress);
+	void createChannelManager(const std::string &adapterAddress);
 
 private:
-	ChannelManager mChannelManager;
 	std::unordered_map<std::string, BluetoothBinarySocket*> mBinarySockets;
 
 private:
@@ -77,14 +84,14 @@ private:
 	        const BluetoothSppChannelId channelId);
 	void notifyCreateChannelSubscribers(const std::string &adapterAddress, const std::string &address, const std::string &uuid,
 	        const std::string &channelId, const bool connected);
-	void addReadDataSubscription(LS::Message &request, const std::string channelId, const int timeout);
-	void removeChannel(const std::string &uuid);
+	void addReadDataSubscription(LS::Message &request, ChannelManager *channelManager, const std::string channelId, const int timeout);
+	void removeChannel(const std::string &uuid, const std::string &adapterAddress);
 	BluetoothBinarySocket* findBinarySocket(const std::string &channelId) const;
-	void enableBinarySocket(const std::string &channelId);
+	void enableBinarySocket(const std::string &adapterAddress, const std::string &channelId);
 	void disableBinarySocket(const std::string &channelId);
-	bool isCallerUsingBinarySocket(const std::string &channelId);
-	void handleBinarySocketRecieveRequest(const std::string &channelId, guchar *readBuf, gsize readLen);
-	void sendDataToStack(const std::string &channelId, guchar *data, gsize outLen);
+	bool isCallerUsingBinarySocket(ChannelManager *channelManager, const std::string &channelId);
+	void handleBinarySocketRecieveRequest(const std::string &channelId, const std::string &adapterAddress, guchar *readBuf, gsize readLen);
+	void sendDataToStack(const std::string &channelId, const std::string &adapterAddress, guchar *data, gsize outLen);
 };
 
 #endif // BLUETOOTHSPPPROFILESERVICE_H

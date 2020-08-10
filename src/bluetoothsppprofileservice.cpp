@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 LG Electronics, Inc.
+// Copyright (c) 2015-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,13 +56,67 @@ void BluetoothSppProfileService::initialize()
 		getImpl<BluetoothSppProfile>()->registerObserver(this);
 }
 
+void BluetoothSppProfileService::initialize(const std::string &adapterAddress)
+{
+	BluetoothProfileService::initialize(adapterAddress);
+
+	createChannelManager(adapterAddress);
+
+	if (findImpl(adapterAddress))
+		getImpl<BluetoothSppProfile>(adapterAddress)->registerObserver(this);
+}
+
+void BluetoothSppProfileService::reset(const std::string &adapterAddress)
+{
+	BluetoothProfileService::reset(adapterAddress);
+
+	auto implIter = mChannelImpls.find(adapterAddress);
+	if (implIter == mChannelImpls.end())
+		return;
+
+	mChannelImpls.erase(implIter);
+}
+
+void BluetoothSppProfileService::createChannelManager(const std::string &adapterAddress)
+{
+	auto iter = mChannelImpls.find(adapterAddress);
+
+	if (iter != mChannelImpls.end())
+		return;
+
+	ChannelManager *channelmanager = new ChannelManager();
+
+	mChannelImpls.insert(std::pair<std::string,ChannelManager*>(adapterAddress, channelmanager));
+}
+
+ChannelManager* BluetoothSppProfileService::findChannelImpl (const std::string &adapterAddress)
+{
+	std::string convertedAddress = convertToLower(adapterAddress);
+	auto implIter = mChannelImpls.find(convertedAddress);
+	if (implIter == mChannelImpls.end())
+	{
+		convertedAddress = convertToUpper(adapterAddress);
+		implIter = mChannelImpls.find(convertedAddress);
+		if (implIter == mChannelImpls.end())
+			return nullptr;
+	}
+
+	return implIter->second;
+}
+
 void BluetoothSppProfileService::handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &address,
         const BluetoothSppChannelId channelId)
 {
-	if (!mChannelManager.isChannelConnected(channelId))
+
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
 		return;
 
-	std::string userChannelId = mChannelManager.getUserChannelId(channelId);
+	if (!channelManager->isChannelConnected(channelId))
+		return;
+
+	std::string userChannelId = channelManager->getUserChannelId(channelId);
 	auto watchIter = mConnectWatches.find(userChannelId);
 	if (watchIter == mConnectWatches.end())
 		return;
@@ -70,25 +124,31 @@ void BluetoothSppProfileService::handleConnectClientDisappeared(const std::strin
 	if (!mImpl)
 		return;
 
-	auto disconnectCallback = [this, channelId, address](BluetoothError error) {
-		if (!mChannelManager.isChannelConnected(address))
-			markDeviceAsNotConnected(address);
+	auto disconnectCallback = [this, channelId, adapterAddress, address, channelManager](BluetoothError error) {
+		if (!channelManager->isChannelConnected(address))
+			markDeviceAsNotConnected(adapterAddress, address);
 	};
 
-	getImpl<BluetoothSppProfile>()->disconnectUuid(channelId, disconnectCallback);
+	getImpl<BluetoothSppProfile>(adapterAddress)->disconnectUuid(channelId, disconnectCallback);
 }
 
 void BluetoothSppProfileService::connectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress)
 {
 	std::string address = convertToLower(requestObj["address"].asString());
 	std::string uuid = convertToLower(requestObj["uuid"].asString());
-	if (mChannelManager.isChannelConnecting(uuid))
+
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
+	if (channelManager->isChannelConnecting(uuid))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEV_CONNECTING);
 		return;
 	}
 
-	if (mChannelManager.getMessageOwner(request.get()).compare("") == 0)
+	if (channelManager->getMessageOwner(request.get()).compare("") == 0)
 	{
 		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
 		return;
@@ -97,7 +157,7 @@ void BluetoothSppProfileService::connectToStack(LS::Message &request, pbnjson::J
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto isConnectedCallback = [this, requestMessage, adapterAddress, address, uuid](const BluetoothError error, const bool state) {
+	auto isConnectedCallback = [this, requestMessage, adapterAddress, address, uuid, channelManager](const BluetoothError error, const bool state) {
 		LS::Message request(requestMessage);
 
 		if (error != BLUETOOTH_ERROR_NONE)
@@ -114,10 +174,10 @@ void BluetoothSppProfileService::connectToStack(LS::Message &request, pbnjson::J
 			return;
 		}
 
-		mChannelManager.markChannelAsConnecting(uuid);
-		notifyStatusSubscribers(adapterAddress, address, uuid, mChannelManager.isChannelConnected(address));
+		channelManager->markChannelAsConnecting(uuid);
+		notifyStatusSubscribers(adapterAddress, address, uuid, channelManager->isChannelConnected(address));
 
-		auto connectCallback = [this, requestMessage, adapterAddress, address, uuid](const BluetoothError error, const BluetoothSppChannelId channelId) {
+		auto connectCallback = [this, requestMessage, adapterAddress, address, uuid, channelManager](const BluetoothError error, const BluetoothSppChannelId channelId) {
 			LS::Message request(requestMessage);
 			bool subscribed = false;
 
@@ -126,8 +186,8 @@ void BluetoothSppProfileService::connectToStack(LS::Message &request, pbnjson::J
 				LSUtils::respondWithError(request, BT_ERR_PROFILE_CONNECT_FAIL);
 				LSMessageUnref(request.get());
 
-				mChannelManager.markChannelAsNotConnecting(uuid);
-				notifyStatusSubscribers(adapterAddress, address, uuid, mChannelManager.isChannelConnected(address));
+				channelManager->markChannelAsNotConnecting(uuid);
+				notifyStatusSubscribers(adapterAddress, address, uuid, channelManager->isChannelConnected(address));
 
 				return;
 			}
@@ -140,9 +200,9 @@ void BluetoothSppProfileService::connectToStack(LS::Message &request, pbnjson::J
 			// and update the client once the connection with the remote device is
 			// dropped.
 			//Connect indication is already coming from SIL in channelStateChanged callback and  markChannelAsConnected already done.
-			std::string userChannelId = mChannelManager.getUserChannelId(channelId);
-			mChannelManager.setChannelAppName(userChannelId, mChannelManager.getMessageOwner(requestMessage));
-			markDeviceAsConnected(address);
+			std::string userChannelId = channelManager->getUserChannelId(channelId);
+			channelManager->setChannelAppName(userChannelId, channelManager->getMessageOwner(requestMessage));
+			markDeviceAsConnected(adapterAddress, address);
 			if (request.isSubscription())
 			{
 				auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
@@ -169,12 +229,12 @@ void BluetoothSppProfileService::connectToStack(LS::Message &request, pbnjson::J
 			LSMessageUnref(request.get());
 		};
 
-		getImpl<BluetoothSppProfile>()->connectUuid(address, uuid, connectCallback);
+		getImpl<BluetoothSppProfile>(adapterAddress)->connectUuid(address, uuid, connectCallback);
 	};
 
 	// Before we start to connect with the device we have to make sure
 	// we're not already connected with it.
-	getImpl<BluetoothSppProfile>()->getChannelState(address, uuid, isConnectedCallback);
+	getImpl<BluetoothSppProfile>(adapterAddress)->getChannelState(address, uuid, isConnectedCallback);
 }
 
 bool BluetoothSppProfileService::isConnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj)
@@ -223,8 +283,14 @@ bool BluetoothSppProfileService::isDisconnectSchemaAvailable(LS::Message &reques
 void BluetoothSppProfileService::disconnectToStack(LS::Message &request, pbnjson::JValue &requestObj, const std::string &adapterAddress)
 {
 	std::string channelId = requestObj["channelId"].asString();
-	BluetoothSppChannelId stackChannelId = mChannelManager.getStackChannelId(channelId);
-	if (!mChannelManager.isChannelConnected(stackChannelId))
+
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
+	BluetoothSppChannelId stackChannelId = channelManager->getStackChannelId(channelId);
+	if (!channelManager->isChannelConnected(stackChannelId))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
 		return;
@@ -252,7 +318,7 @@ void BluetoothSppProfileService::disconnectToStack(LS::Message &request, pbnjson
 		removeConnectWatchForDevice(channelId, true, false);
 	};
 
-	getImpl<BluetoothSppProfile>()->disconnectUuid(stackChannelId, disconnectCallback);
+	getImpl<BluetoothSppProfile>(adapterAddress)->disconnectUuid(stackChannelId, disconnectCallback);
 }
 
 void BluetoothSppProfileService::notifyStatusSubscribers(const std::string &adapterAddress, const std::string &address,
@@ -262,7 +328,12 @@ void BluetoothSppProfileService::notifyStatusSubscribers(const std::string &adap
 	if (subscriptionIter == mGetStatusSubscriptions.end())
 		return;
 
-	pbnjson::JValue responseObj = buildGetStatusResp(connected, mChannelManager.isChannelConnecting(uuid), true,
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
+	pbnjson::JValue responseObj = buildGetStatusResp(connected, channelManager->isChannelConnecting(uuid), true,
 	                                                 true, adapterAddress, address);
 
 	LS::SubscriptionPoint *subscriptionPoint = subscriptionIter->second;
@@ -311,20 +382,8 @@ bool BluetoothSppProfileService::createChannel(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothSppProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL, true);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(name, string), PROP(uuid, string),
 	        PROP(adapterAddress, string), PROP_WITH_VAL_1(subscribe, boolean, true)) REQUIRED_3(name, uuid, subscribe));
-
-	if (mChannelManager.getMessageOwner(request.get()).compare("") == 0)
-	{
-		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
-		return true;
-	}
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -346,10 +405,27 @@ bool BluetoothSppProfileService::createChannel(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	if (!getImpl<BluetoothSppProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL, true);
+		return true;
+	}
+
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return true;
+
+	if (channelManager->getMessageOwner(request.get()).compare("") == 0)
+	{
+		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
+		return true;
+	}
+
 	std::string name = requestObj["name"].asString();
 	std::string uuid = requestObj["uuid"].asString();
 
-	BluetoothError error = getImpl<BluetoothSppProfile>()->createChannel(name, uuid);
+	BluetoothError error = getImpl<BluetoothSppProfile>(adapterAddress)->createChannel(name, uuid);
 	if (error != BLUETOOTH_ERROR_NONE)
 	{
 		LSUtils::respondWithError(request, BT_ERR_SPP_CREATE_CHANNEL_FAILED, true);
@@ -359,8 +435,8 @@ bool BluetoothSppProfileService::createChannel(LSMessage &message)
 	if (request.isSubscription())
 	{
 		auto watch = new LSUtils::ClientWatch(getManager()->get(), request.get(),
-		        std::bind(&BluetoothSppProfileService::removeChannel, this, uuid));
-		mChannelManager.addCreateChannelSubscripton(uuid, watch, request.get());
+		        std::bind(&BluetoothSppProfileService::removeChannel, this, uuid, adapterAddress));
+		channelManager->addCreateChannelSubscripton(uuid, watch, request.get());
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -372,17 +448,27 @@ bool BluetoothSppProfileService::createChannel(LSMessage &message)
 	return true;
 }
 
-void BluetoothSppProfileService::removeChannel(const std::string &uuid)
+void BluetoothSppProfileService::removeChannel(const std::string &uuid, const std::string &adapterAddress)
 {
-	getImpl<BluetoothSppProfile>()->removeChannel(uuid);
+	getImpl<BluetoothSppProfile>(adapterAddress)->removeChannel(uuid);
 
-	mChannelManager.deleteCreateChannelSubscription(uuid);
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
+	channelManager->deleteCreateChannelSubscription(uuid);
 }
 
 void BluetoothSppProfileService::notifyCreateChannelSubscribers(const std::string &adapterAddress, const std::string &address,
         const std::string &uuid, const std::string &channelId, bool connected)
 {
-	LSUtils::ClientWatch *watch = mChannelManager.getCreateChannelSubscription(uuid);
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
+	LSUtils::ClientWatch *watch = channelManager->getCreateChannelSubscription(uuid);
 	if (NULL == watch)
 		return;
 
@@ -427,20 +513,8 @@ bool BluetoothSppProfileService::writeData(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothSppProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(channelId, string), PROP(data, string),
 	        PROP(adapterAddress, string)) REQUIRED_2(channelId, data));
-
-	if (mChannelManager.getMessageOwner(request.get()).compare("") == 0)
-	{
-		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
-		return true;
-	}
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -460,16 +534,33 @@ bool BluetoothSppProfileService::writeData(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	if (!getImpl<BluetoothSppProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return true;
+
+	if (channelManager->getMessageOwner(request.get()).compare("") == 0)
+	{
+		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
+		return true;
+	}
+
 	std::string channelId = requestObj["channelId"].asString();
-	BluetoothSppChannelId stackChannelId = mChannelManager.getStackChannelId(channelId);
+	BluetoothSppChannelId stackChannelId = channelManager->getStackChannelId(channelId);
 	if (BLUETOOTH_SPP_CHANNEL_ID_INVALID == stackChannelId)
 	{
 		LSUtils::respondWithError(request, BT_ERR_SPP_CHANNELID_NOT_AVAILABLE);
 		return true;
 	}
 
-	std::string appName = mChannelManager.getMessageOwner(request.get());
-	std::string channelAppName = mChannelManager.getChannelAppName(channelId);
+	std::string appName = channelManager->getMessageOwner(request.get());
+	std::string channelAppName = channelManager->getChannelAppName(channelId);
 	if (channelAppName != appName)
 	{
 		LSUtils::respondWithError(request, BT_ERR_SPP_PERMISSION_DENIED);
@@ -503,7 +594,7 @@ bool BluetoothSppProfileService::writeData(LSMessage &message)
 		LSUtils::postToClient(request, responseObj);
 		LSMessageUnref(request.get());
 	};
-	getImpl<BluetoothSppProfile>()->writeData(stackChannelId, gdata, outLen, writeDataCallback);
+	getImpl<BluetoothSppProfile>(adapterAddress)->writeData(stackChannelId, gdata, outLen, writeDataCallback);
 	g_free(gdata);
 
 	return true;
@@ -543,20 +634,8 @@ bool BluetoothSppProfileService::readData(LSMessage &message)
 	pbnjson::JValue requestObj;
 	int parseError = 0;
 
-	if (!mImpl && !getImpl<BluetoothSppProfile>())
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL, true);
-		return true;
-	}
-
 	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(channelId, string), PROP(subscribe, boolean),
 	        PROP(timeout, integer), PROP(adapterAddress, string)));
-
-	if (mChannelManager.getMessageOwner(request.get()).compare("") == 0)
-	{
-		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
-		return true;
-	}
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -572,19 +651,35 @@ bool BluetoothSppProfileService::readData(LSMessage &message)
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
 
+	if (!getImpl<BluetoothSppProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL, true);
+		return true;
+	}
+
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return true;
+
+	if (channelManager->getMessageOwner(request.get()).compare("") == 0)
+	{
+		LSUtils::respondWithError(request, BT_ERR_SPP_APPID_PARAM_MISSING, true);
+		return true;
+	}
 	std::string channelId = EMPTY_STRING;
-	std::string appName = mChannelManager.getMessageOwner(request.get());
+	std::string appName = channelManager->getMessageOwner(request.get());
 	if (requestObj.hasKey("channelId"))
 	{
 		channelId = requestObj["channelId"].asString();
-		BluetoothSppChannelId stackChannelId = mChannelManager.getStackChannelId(channelId);
+		BluetoothSppChannelId stackChannelId = channelManager->getStackChannelId(channelId);
 		if (BLUETOOTH_SPP_CHANNEL_ID_INVALID == stackChannelId)
 		{
 			LSUtils::respondWithError(request, BT_ERR_SPP_CHANNELID_NOT_AVAILABLE, true);
 			return true;
 		}
 
-		std::string channelAppName = mChannelManager.getChannelAppName(channelId);
+		std::string channelAppName = channelManager->getChannelAppName(channelId);
 		if (channelAppName != appName)
 		{
 			LSUtils::respondWithError(request, BT_ERR_SPP_PERMISSION_DENIED, true);
@@ -605,7 +700,7 @@ bool BluetoothSppProfileService::readData(LSMessage &message)
 	}
 
 	if (subscribed)
-		addReadDataSubscription(request, channelId, timeout);
+		addReadDataSubscription(request, channelManager, channelId, timeout);
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 	responseObj.put("adapterAddress", adapterAddress);
@@ -614,7 +709,7 @@ bool BluetoothSppProfileService::readData(LSMessage &message)
 
 	int size = 0;
 	gchar *gdata = NULL;
-	const ChannelManager::DataBuffer *dataBuffer = mChannelManager.getChannelBufferData(channelId, appName);
+	const ChannelManager::DataBuffer *dataBuffer = channelManager->getChannelBufferData(channelId, appName);
 	if (dataBuffer)
 	{
 		gdata = g_base64_encode(dataBuffer->buffer, dataBuffer->size);
@@ -650,60 +745,70 @@ bool BluetoothSppProfileService::readData(LSMessage &message)
 	return true;
 }
 
-void BluetoothSppProfileService::addReadDataSubscription(LS::Message &request, const std::string channelId, const int timeout)
+void BluetoothSppProfileService::addReadDataSubscription(LS::Message &request, ChannelManager *channelManager, const std::string channelId, const int timeout)
 {
 	LSUtils::ClientWatch *watch = new LSUtils::ClientWatch(getManager()->get(), request.get(), NULL);
-	std::string appName = mChannelManager.getMessageOwner(request.get());
-	void *readDataInfo = mChannelManager.addReadDataSubscription(channelId, timeout, watch, appName);
+	std::string appName = channelManager->getMessageOwner(request.get());
+	void *readDataInfo = channelManager->addReadDataSubscription(channelId, timeout, watch, appName);
 
-	auto func = std::bind(&ChannelManager::deleteReadDataSubscription, &mChannelManager, readDataInfo);
+	auto func = std::bind(&ChannelManager::deleteReadDataSubscription, channelManager, readDataInfo);
 	watch->setCallback(func);
 }
 
-void BluetoothSppProfileService::channelStateChanged(const std::string &address, const std::string &uuid,
+void BluetoothSppProfileService::channelStateChanged(const std::string &adapterAddress, const std::string &address, const std::string &uuid,
         const BluetoothSppChannelId channelId, const bool state)
 {
 	// If the callers(i.e. com.lge.service.watchmanager and com.lge.service.mashupmanager) should use the
         // binary socket to send/receive the data, WBS handles the binary socket.
 
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
 	std::string userChannelId = EMPTY_STRING;
 	if (state)
 	{
-		userChannelId = mChannelManager.markChannelAsConnected(channelId, address, uuid);
-		if (isCallerUsingBinarySocket(userChannelId))
-			enableBinarySocket(userChannelId);
+		userChannelId = channelManager->markChannelAsConnected(channelId, address, uuid);
+		if (isCallerUsingBinarySocket(channelManager, userChannelId))
+			enableBinarySocket(adapterAddress, userChannelId);
 
-		markDeviceAsConnected(address);
+		markDeviceAsConnected(adapterAddress, address);
 	}
 	else
 	{
-		userChannelId = mChannelManager.getUserChannelId(channelId);
-		if (isCallerUsingBinarySocket(userChannelId))
+		userChannelId = channelManager->getUserChannelId(channelId);
+		if (isCallerUsingBinarySocket(channelManager, userChannelId))
 			disableBinarySocket(userChannelId);
 
 		removeConnectWatchForDevice(userChannelId, true);
-		mChannelManager.markChannelAsNotConnected(channelId, getManager()->getAddress());
-		if (!mChannelManager.isChannelConnected(address))
-			markDeviceAsNotConnected(address);
+		channelManager->markChannelAsNotConnected(channelId, getManager()->getAddress());
+		if (!channelManager->isChannelConnected(address))
+			markDeviceAsNotConnected(adapterAddress, address);
 	}
 
-	notifyCreateChannelSubscribers(getManager()->getAddress(), address, uuid, userChannelId, state);
-	notifyStatusSubscribers(getManager()->getAddress(), address, uuid, mChannelManager.isChannelConnected(address));
+	notifyCreateChannelSubscribers(adapterAddress, address, uuid, userChannelId, state);
+	notifyStatusSubscribers(adapterAddress, address, uuid, channelManager->isChannelConnected(address));
 }
 
-void BluetoothSppProfileService::dataReceived(const BluetoothSppChannelId channelId, const uint8_t *data, const uint32_t size)
+void BluetoothSppProfileService::dataReceived(const BluetoothSppChannelId channelId, const std::string &adapterAddress, const uint8_t *data, const uint32_t size)
 {
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
 	// If caller used the binary socket, WBS does not support Luna APIs to read the data.
 	// After receiving the data from the stack, it will be sent to the binary socket directly.
-	std::string userChannelId = mChannelManager.getUserChannelId(channelId);
-	if (isCallerUsingBinarySocket(userChannelId))
+	std::string userChannelId = channelManager->getUserChannelId(channelId);
+	if (isCallerUsingBinarySocket(channelManager, userChannelId))
 	{
 		auto binarySocket = findBinarySocket(userChannelId);
 		if (binarySocket)
 			binarySocket->sendData(data, size);
 	}
 	else
-		mChannelManager.addReceiveQueue(getManager()->getAddress(), channelId, data, size);
+		channelManager->addReceiveQueue(adapterAddress, channelId, data, size);
 }
 
 BluetoothBinarySocket* BluetoothSppProfileService::findBinarySocket(const std::string &channelId) const
@@ -715,7 +820,7 @@ BluetoothBinarySocket* BluetoothSppProfileService::findBinarySocket(const std::s
 	return binarySocketIter->second;
 }
 
-void BluetoothSppProfileService::enableBinarySocket(const std::string &channelId)
+void BluetoothSppProfileService::enableBinarySocket(const std::string &adapterAddress, const std::string &channelId)
 {
 	bool created = false;
 	BluetoothBinarySocket *binarySocket = new BluetoothBinarySocket();
@@ -725,7 +830,7 @@ void BluetoothSppProfileService::enableBinarySocket(const std::string &channelId
 	if (created)
 	{
 		binarySocket->registerReceiveDataWatch(std::bind(&BluetoothSppProfileService::handleBinarySocketRecieveRequest,
-												this, channelId, _1, _2));
+												this, channelId, adapterAddress, _1, _2));
 		mBinarySockets.insert(std::pair<std::string, BluetoothBinarySocket*>(channelId, binarySocket));
 	}
 	else
@@ -745,10 +850,10 @@ void BluetoothSppProfileService::disableBinarySocket(const std::string &channelI
 	delete binarySocket;
 }
 
-bool BluetoothSppProfileService::isCallerUsingBinarySocket(const std::string &channelId)
+bool BluetoothSppProfileService::isCallerUsingBinarySocket(ChannelManager *channelManager, const std::string &channelId)
 {
 	// Supports the binary socket to com.lge.watchmanager and com.lge.service.mashupmanager
-	std::string callerName = mChannelManager.getChannelAppName(channelId);
+	std::string callerName = channelManager->getChannelAppName(channelId);
 	if (callerName.compare("com.lge.watchmanager") == 0 ||
 			callerName.compare("com.lge.service.mashupmanager") == 0)
 		return true;
@@ -756,27 +861,32 @@ bool BluetoothSppProfileService::isCallerUsingBinarySocket(const std::string &ch
 	return false;
 }
 
-void BluetoothSppProfileService::handleBinarySocketRecieveRequest(const std::string &channelId, guchar *readBuf, gsize readLen)
+void BluetoothSppProfileService::handleBinarySocketRecieveRequest(const std::string &channelId, const std::string &adapterAddress, guchar *readBuf, gsize readLen)
 {
 	auto binarySocket = findBinarySocket(channelId);
 	if (binarySocket)
-		sendDataToStack(channelId, readBuf, readLen);
+		sendDataToStack(channelId, adapterAddress, readBuf, readLen);
 }
 
-void BluetoothSppProfileService::sendDataToStack(const std::string &channelId, guchar *data, gsize outLen)
+void BluetoothSppProfileService::sendDataToStack(const std::string &channelId, const std::string &adapterAddress, guchar *data, gsize outLen)
 {
 	auto binarySocket = findBinarySocket(channelId);
 	if (!binarySocket)
 		return;
 
-	BluetoothSppChannelId stackChannelId = mChannelManager.getStackChannelId(channelId);
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return;
+
+	BluetoothSppChannelId stackChannelId = channelManager->getStackChannelId(channelId);
 	if (BLUETOOTH_SPP_CHANNEL_ID_INVALID == stackChannelId)
 	{
 		BT_DEBUG("stackChannelId is invalid");
 		return;
 	}
 
-	if (!mChannelManager.isChannelConnected(stackChannelId))
+	if (!channelManager->isChannelConnected(stackChannelId))
 	{
 		BT_DEBUG("stackChannelId is not connected");
 		return;
@@ -792,7 +902,7 @@ void BluetoothSppProfileService::sendDataToStack(const std::string &channelId, g
 	};
 
 	binarySocket->setWriting(true);
-	getImpl<BluetoothSppProfile>()->writeData(stackChannelId, data, outLen, writeDataCallback);
+	getImpl<BluetoothSppProfile>(adapterAddress)->writeData(stackChannelId, data, outLen, writeDataCallback);
 }
 
 pbnjson::JValue BluetoothSppProfileService::buildGetStatusResp(bool connected, bool connecting, bool subscribed, bool returnValue,
@@ -800,9 +910,14 @@ pbnjson::JValue BluetoothSppProfileService::buildGetStatusResp(bool connected, b
 {
 	pbnjson::JValue responseObj = pbnjson::Object();
 
+	ChannelManager *channelManager = findChannelImpl(adapterAddress);
+
+	if (channelManager == nullptr)
+		return responseObj;
+
 	appendCommonProfileStatus(responseObj, connected, connecting, subscribed,
 	                          returnValue, adapterAddress, deviceAddress);
-	responseObj.put("connectedChannels", mChannelManager.getConnectedChannels(deviceAddress));
+	responseObj.put("connectedChannels", channelManager->getConnectedChannels(deviceAddress));
 
 	return responseObj;
 }

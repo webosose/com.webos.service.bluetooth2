@@ -610,8 +610,6 @@ void BluetoothManagerService::initializeProfiles(BluetoothManagerAdapter *adapte
 {
 	for (auto profile : mProfiles)
 	{
-		if ((profile->getName() == "GATT") || (profile->getName() == "SPP"))
-			profile->initialize();
 		profile->initialize(adapter->getAddress());
 	}
 }
