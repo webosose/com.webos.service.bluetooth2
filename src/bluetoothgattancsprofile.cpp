@@ -242,7 +242,7 @@ bool BluetoothGattAncsProfile::isAncsServiceSupported(LSMessage *requestMessage,
 {
 	//TODO:Should get called after BSA_BLE_CL_SEARCH_CMPL_EVT instead of waiting for timeout
 	BT_DEBUG("[%s](%d) getImpl->getServices\n", __FUNCTION__, __LINE__);
-	BluetoothGattServiceList serviceList = getImpl<BluetoothGattProfile>()->getServices(address);
+	BluetoothGattServiceList serviceList = getImpl<BluetoothGattProfile>(adapterAddress)->getServices(address);
 	BT_DEBUG("%s: serviceList length for address %s %zu", __func__, address.c_str(), serviceList.size());
 	bool found = false;
 	for (auto service : serviceList) {
@@ -387,7 +387,7 @@ bool BluetoothGattAncsProfile::connectCallback(LSMessage *requestMessage, const 
 
 	};
 	BT_DEBUG("[%s](%d) getImpl->discoverServices\n", __FUNCTION__, __LINE__);
-	getImpl<BluetoothGattProfile>()->discoverServices(address, discoverServicesCallback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->discoverServices(address, discoverServicesCallback);
 	return true;
 }
 
@@ -706,7 +706,7 @@ bool BluetoothGattAncsProfile::awaitNotifications(LSMessage &message)
 		LSMessageUnref(requestMessage);
 	};
 
-	getImpl<BluetoothGattProfile>()->changeCharacteristicWatchStatus(address, mAncsUuid, BluetoothUuid(NOTIFICATION_SOURCE_UUID), true, monitorCallback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->changeCharacteristicWatchStatus(address, mAncsUuid, BluetoothUuid(NOTIFICATION_SOURCE_UUID), true, monitorCallback);
 	return true;
 }
 
@@ -730,7 +730,7 @@ void BluetoothGattAncsProfile::handleNotificationClientDisappeared(const std::st
 
 	BT_DEBUG("Disabling characteristic watch to device %s", address.c_str());
 
-	getImpl<BluetoothGattProfile>()->changeCharacteristicWatchStatus(address, mAncsUuid, BluetoothUuid(NOTIFICATION_SOURCE_UUID), false, [this](BluetoothError error)
+	getImpl<BluetoothGattProfile>(adapterAddress)->changeCharacteristicWatchStatus(address, mAncsUuid, BluetoothUuid(NOTIFICATION_SOURCE_UUID), false, [this](BluetoothError error)
 	{
 		BT_WARNING(MSGID_SUBSCRIPTION_CLIENT_DROPPED, 0, "No LS2 error response can be issued since subscription client has dropped");
 	});
@@ -950,7 +950,7 @@ void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &add
 			DELETE_OBJ(mNotificationQueryInfo)
 
 			BT_DEBUG("[%s](%d) getImpl->changeCharacteristicWatchStatus\n", __FUNCTION__, __LINE__);
-			getImpl<BluetoothGattProfile>()->changeCharacteristicWatchStatus (address, mAncsUuid, BluetoothUuid(DATA_SOURCE_UUID), false, [this](BluetoothError error)
+			getImpl<BluetoothGattProfile>(getManager()->getAddress())->changeCharacteristicWatchStatus (address, mAncsUuid, BluetoothUuid(DATA_SOURCE_UUID), false, [this](BluetoothError error)
 			{
 			      BT_DEBUG("Found all attributes. Remove CharacteristicWatch for DATA_SOURCE_UUID");
 			});
@@ -1166,7 +1166,7 @@ bool BluetoothGattAncsProfile::queryNotificationAttributes(LSMessage &message)
 
 	};
 	BT_DEBUG("[%s](%d) getImpl->changeCharacteristicWatchStatus\n", __FUNCTION__, __LINE__);
-	getImpl<BluetoothGattProfile>()->changeCharacteristicWatchStatus(deviceAddress, mAncsUuid, BluetoothUuid(DATA_SOURCE_UUID), true, monitorCallback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->changeCharacteristicWatchStatus(deviceAddress, mAncsUuid, BluetoothUuid(DATA_SOURCE_UUID), true, monitorCallback);
 
 	time(&mNotificationQueryInfo->startTime);
 	mNotificationQueryInfo->requestMessage = request.get();
@@ -1203,7 +1203,7 @@ bool BluetoothGattAncsProfile::queryNotificationAttributes(LSMessage &message)
 			};
 
 			BT_DEBUG("[%s](%d) getImpl->writeCharacteristic\n", __FUNCTION__, __LINE__);
-			thisRef->getImpl<BluetoothGattProfile>()->writeCharacteristic(timeoutData->address, thisRef->mAncsUuid, timeoutData->characteristic, writeCharacteristicCallback);
+			thisRef->getImpl<BluetoothGattProfile>(timeoutData->adapterAddress)->writeCharacteristic(timeoutData->address, thisRef->mAncsUuid, timeoutData->characteristic, writeCharacteristicCallback);
 
 			return true;
 		};
@@ -1329,7 +1329,7 @@ bool BluetoothGattAncsProfile::performNotificationAction(LSMessage &message)
 	};
 
 	BT_DEBUG("[%s](%d) getImpl->writeCharacteristic\n", __FUNCTION__, __LINE__);
-	getImpl<BluetoothGattProfile>()->writeCharacteristic(address, BluetoothUuid(ANCS_UUID), characteristicToWrite, writeCharacteristicCallback);
+	getImpl<BluetoothGattProfile>(adapterAddress)->writeCharacteristic(address, BluetoothUuid(ANCS_UUID), characteristicToWrite, writeCharacteristicCallback);
 
 	return true;
 }

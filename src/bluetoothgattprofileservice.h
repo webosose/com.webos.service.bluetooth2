@@ -47,6 +47,7 @@ namespace LSUtils
 typedef struct
 {
 	std::string deviceAddress;
+	std::string adapterAddress;
 	BluetoothUuid serviceUuid;
 	uint16_t handle;
 	BluetoothUuid characteristicUuid;
@@ -439,8 +440,6 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 			const std::string &adapterAddress);
 
 	// observer
-	void characteristicValueReadRequested(uint32_t requestId, const std::string &address, uint16_t server_if, uint16_t charId);
-	void characteristicValueWriteRequested(uint32_t requestId, const std::string &address, uint16_t server_if, uint16_t charId, const BluetoothGattValue &value, bool response = true);
 
 	std::unordered_map<BluetoothUuid, LocalServer*> mLocalServer;
 	std::unordered_map<uint16_t, connectedDeviceInfo*> mConnectedDevices;
@@ -472,8 +471,6 @@ public:
 	bool readDescriptorValues(LSMessage &message);
 	bool writeDescriptorValue(LSMessage &message);
 
-	bool writeRemoteCharacteristic(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothGattCharacteristic &characteristicToWrite,
-			BluetoothResultCallback callback);
 	bool readRemoteCharacteristic(const std::string adapterAddress, const std::string deviceAddress,
 			const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid,
 			const uint16_t characteristicHandle,
@@ -481,11 +478,9 @@ public:
 	bool readRemoteCharacteristics(const std::string adapterAddress, const std::string deviceAddress,
 			const BluetoothUuid &serviceUuid, const BluetoothUuidList &characteristicUuids,
 			BluetoothGattReadCharacteristicsCallback callback);
-	bool writeRemoteCharacteristic(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const BluetoothGattDescriptor &descriptorToWrite,
-				BluetoothResultCallback callback);
-	bool readRemoteDescriptor(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const BluetoothUuid &descriptorUuid, const uint16_t descriptorHandle,
+	bool readRemoteDescriptor(const std::string adapterAddress, const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const BluetoothUuid &descriptorUuid, const uint16_t descriptorHandle,
 			BluetoothGattReadDescriptorCallback callback);
-	bool readRemoteDescriptors(const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const BluetoothUuidList &descriptorUuids,
+	bool readRemoteDescriptors(const std::string adapterAddress, const std::string deviceAddress, const BluetoothUuid &serviceUuid, const BluetoothUuid &characteristicUuid, const BluetoothUuidList &descriptorUuids,
 				BluetoothGattReadDescriptorsCallback callback);
 
 	virtual bool isConnectSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj);
