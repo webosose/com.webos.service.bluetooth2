@@ -83,10 +83,14 @@ public:
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
-	void mediaDataReceived(const BluetoothMediaMetaData& metaData, const std::string& address);
+	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId,
+								  const std::string &adapterAddress, const std::string &address);
+	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &adapterAddress,
+								const std::string &address);
+	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &address);
 	void mediaDataReceived(const BluetoothMediaMetaData &metaData, const std::string &adapterAddress,
-		const std::string &address);
-	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus& playStatus, const std::string& address);
+						   const std::string &address);
+	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus, const std::string &address);
 	void mediaPlayStatusReceived(const BluetoothMediaPlayStatus &playStatus,  const std::string &adapterAddress,
 		const std::string &address);
 	void volumeChanged(int volume, const std::string &adapterAddress, const std::string &address);
@@ -128,11 +132,23 @@ private:
 	void setMediaPlayStatusRequestsAllowed(bool state);
 	void assignRequestId(MediaRequest *request);
 	void createMediaRequest(bool metaData, uint64_t requestId, const std::string &address);
+	void createMediaRequest(bool metaData, BluetoothAvrcpRequestId requestId,
+							const std::string &adapterAddress, const std::string &address);
 	void deleteMediaRequestId(bool metaData, const std::string &requestIdStr);
+	void deleteMediaRequestId(bool metaData, const std::string &requestIdStr,
+							  const std::string &adapterAddress);
 	void deleteMediaRequest(bool metaData, const std::string &requestIdStr);
+	void deleteMediaRequest(bool metaData, const std::string &requestIdStr,
+							const std::string &adapterAddress);
 	BluetoothAvrcpRequestId findRequestId(bool metaData, const std::string &requestIdStr);
+	BluetoothAvrcpRequestId findRequestId(bool metaData, const std::string &requestIdStr,
+										  const std::string &adapterAddress);
 	uint64_t getRequestIndex(bool metaData, const std::string &requestIdStr);
-	MediaRequest* findMediaRequest(bool metaData, const std::string &requestIdStr);
+	uint64_t getRequestIndex(bool metaData, const std::string &requestIdStr,
+							 const std::string &adapterAddress);
+	MediaRequest *findMediaRequest(bool metaData, const std::string &requestIdStr);
+	MediaRequest *findMediaRequest(bool metaData, const std::string &requestIdStr,
+								   const std::string &adapterAddress);
 	void notifyConfirmationRequest(LS::Message &request, const std::string &requestId, const std::string &adapterAddress, bool success);
 	void parseMediaMetaData(const pbnjson::JValue &dataObj, BluetoothMediaMetaData *data);
 	void parseMediaPlayStatus(const pbnjson::JValue &dataObj, BluetoothMediaPlayStatus *status);
@@ -163,6 +179,8 @@ private:
 	void clearPlayStatus(const std::string &adapterAddress,
 						 const std::string &address);
 	std::string folderItemTypeEnumToString(BluetoothAvrcpItemType type);
+	BluetoothClientWatch *getMediaRequestWatch(
+		std::list<BluetoothClientWatch *> &clientWatches, const std::string &adapterAddress);
 
 private:
 	std::string mEqualizer;
@@ -204,6 +222,8 @@ private:
 	std::list<BluetoothClientWatch*> mGetConnectedDevicesRemoteVolumeWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetPlayerInfoWatchesForMultipleAdapters;
 	std::list<BluetoothClientWatch*> mGetCurrentFolderWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mIncomingMediaPlayStatusWatchesForMultipleAdapters;
+	std::list<BluetoothClientWatch*> mIncomingMediaMetaDataWatchesForMultipleAdapters;
 
 	/* Features supported by remote AVRCP target device */
 	std::map<std::string, std::map<std::string, std::vector<std::string>>> mTGRemoteFeturesForMultipleAdapters;
@@ -213,6 +233,11 @@ private:
 	std::map<std::string, std::map<std::string, BluetothPlayerInfoList>> mPlayerInfoListForMultipleAdapters;
 	std::map<std::string, std::map<std::string, std::string>> mCurrentFolderForMultipleAdapters;
 	std::map<std::string, std::map<std::string, BluetoothMediaPlayStatus> > mPlayStatusForMultipleAdapters;
+
+	std::map<uint64_t, std::map<std::string, MediaRequest*> > mMediaPlayStatusRequestsMultiAdapters;
+	std::map<uint64_t, std::map<std::string, BluetoothAvrcpRequestId> > mMediaPlayStatusRequestIdsMultiAdapters;
+	std::map<uint64_t, std::map<std::string, MediaRequest*> > mMediaMetaDataRequestsMultiAdapters;
+	std::map<uint64_t, std::map<std::string, BluetoothAvrcpRequestId> > mMediaMetaDataRequestIdsMultiAdapters;
 };
 
 #endif // BLUETOOTHAVRCPPROFILESERVICE_H

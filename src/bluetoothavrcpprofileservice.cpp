@@ -189,6 +189,20 @@ BluetoothAvrcpProfileService::~BluetoothAvrcpProfileService()
 		delete (*iter);
 	}
 	mGetCurrentFolderWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mIncomingMediaPlayStatusWatchesForMultipleAdapters.begin();
+		 iter != mIncomingMediaPlayStatusWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mIncomingMediaPlayStatusWatchesForMultipleAdapters.clear();
+
+	for (auto iter = mIncomingMediaMetaDataWatchesForMultipleAdapters.begin();
+		 iter != mIncomingMediaMetaDataWatchesForMultipleAdapters.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mIncomingMediaMetaDataWatchesForMultipleAdapters.clear();
 }
 
 void BluetoothAvrcpProfileService::initialize()
@@ -308,21 +322,21 @@ bool BluetoothAvrcpProfileService::awaitMediaMetaDataRequest(LSMessage &message)
 	if (!prepareAwaitRequest(request, requestObj))
 		return true;
 
-	if (mIncomingMediaMetaDataWatch)
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothClientWatch *watch = getMediaRequestWatch(
+		mIncomingMediaMetaDataWatchesForMultipleAdapters, adapterAddress);
+
+	if (watch)
 	{
 		LSUtils::respondWithError(request, BT_ERR_ALLOW_ONE_SUBSCRIBE);
 		return true;
 	}
 
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
-
-	mIncomingMediaMetaDataWatch = new LSUtils::ClientWatch(getManager()->get(), &message, [this]() {
-                setMediaMetaDataRequestsAllowed(false);
-        });
-
-	setMediaMetaDataRequestsAllowed(true);
+	bool retVal = addClientWatch(request, &mIncomingMediaMetaDataWatchesForMultipleAdapters,
+			adapterAddress, "");
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -330,7 +344,7 @@ bool BluetoothAvrcpProfileService::awaitMediaMetaDataRequest(LSMessage &message)
 	responseObj.put("returnValue", true);
 	responseObj.put("adapterAddress", adapterAddress);
 
-	LSUtils::postToClient(mIncomingMediaMetaDataWatch->getMessage(), responseObj);
+	LSUtils::postToClient(request, responseObj);
 
 	return true;
 }
@@ -361,12 +375,6 @@ bool BluetoothAvrcpProfileService::supplyMediaMetaData(LSMessage &message)
 		return true;
 	}
 
-	if (!mMediaMetaDataRequestsAllowed)
-	{
-		LSUtils::respondWithError(request, BT_ERR_AVRCP_REQUEST_NOT_ALLOWED);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
@@ -379,8 +387,8 @@ bool BluetoothAvrcpProfileService::supplyMediaMetaData(LSMessage &message)
 	}
 
 	std::string requestIdStr = requestObj["requestId"].asString();
-	MediaRequest *mediaRequest = findMediaRequest(true, requestIdStr);
-	BluetoothAvrcpRequestId requestId = findRequestId(true, requestIdStr);
+	MediaRequest *mediaRequest = findMediaRequest(true, requestIdStr, adapterAddress);
+	BluetoothAvrcpRequestId requestId = findRequestId(true, requestIdStr, adapterAddress);
 	if (!mediaRequest || BLUETOOTH_AVRCP_REQUEST_ID_INVALID == requestId)
 	{
 		LSUtils::respondWithError(request, BT_ERR_AVRCP_REQUESTID_NOT_EXIST);
@@ -405,10 +413,23 @@ bool BluetoothAvrcpProfileService::supplyMediaMetaData(LSMessage &message)
 
 	BT_INFO("AVRCP", 0, "Service calls SIL API : supplyMediaMetaData");
 	getImpl<BluetoothAvrcpProfile>(adapterAddress)->supplyMediaMetaData(requestId, metaData, requestCallback);
-	deleteMediaRequest(true, requestIdStr);
-	deleteMediaRequestId(true, requestIdStr);
+	deleteMediaRequest(true, requestIdStr, adapterAddress);
+	deleteMediaRequestId(true, requestIdStr, adapterAddress);
 
 	return true;
+}
+
+BluetoothClientWatch *BluetoothAvrcpProfileService::getMediaRequestWatch(
+	std::list<BluetoothClientWatch *> &clientWatches, const std::string &adapterAddress)
+{
+	for (auto watch : clientWatches)
+	{
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		{
+			return watch;
+		}
+	}
+	return NULL;
 }
 
 bool BluetoothAvrcpProfileService::awaitMediaPlayStatusRequest(LSMessage &message)
@@ -421,21 +442,21 @@ bool BluetoothAvrcpProfileService::awaitMediaPlayStatusRequest(LSMessage &messag
 	if (!prepareAwaitRequest(request, requestObj))
 		return true;
 
-	if (mIncomingMediaPlayStatusWatch)
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothClientWatch *watch = getMediaRequestWatch(
+		mIncomingMediaPlayStatusWatchesForMultipleAdapters, adapterAddress);
+
+	if (watch)
 	{
 		LSUtils::respondWithError(request, BT_ERR_ALLOW_ONE_SUBSCRIBE);
 		return true;
 	}
 
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
-
-	mIncomingMediaPlayStatusWatch = new LSUtils::ClientWatch(getManager()->get(), &message, [this]() {
-                setMediaPlayStatusRequestsAllowed(false);
-        });
-
-	setMediaPlayStatusRequestsAllowed(true);
+	bool retVal = addClientWatch(request, &mIncomingMediaPlayStatusWatchesForMultipleAdapters,
+			adapterAddress, "");
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -443,7 +464,7 @@ bool BluetoothAvrcpProfileService::awaitMediaPlayStatusRequest(LSMessage &messag
 	responseObj.put("returnValue", true);
 	responseObj.put("adapterAddress", adapterAddress);
 
-	LSUtils::postToClient(mIncomingMediaPlayStatusWatch->getMessage(), responseObj);
+	LSUtils::postToClient(request, responseObj);
 
 	return true;
 }
@@ -473,15 +494,17 @@ bool BluetoothAvrcpProfileService::supplyMediaPlayStatus(LSMessage &message)
 		return true;
 	}
 
-	if (!mMediaPlayStatusRequestsAllowed)
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	auto watch = getMediaRequestWatch(
+			mIncomingMediaPlayStatusWatchesForMultipleAdapters, adapterAddress);
+	if (!watch)
 	{
 		LSUtils::respondWithError(request, BT_ERR_AVRCP_REQUEST_NOT_ALLOWED);
 		return true;
 	}
-
-	std::string adapterAddress;
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-		return true;
 
 	BluetoothProfile *impl = findImpl(adapterAddress);
 	if (!impl && getImpl<BluetoothAvrcpProfile>(adapterAddress))
@@ -491,8 +514,8 @@ bool BluetoothAvrcpProfileService::supplyMediaPlayStatus(LSMessage &message)
 	}
 
 	std::string requestIdStr = requestObj["requestId"].asString();
-	MediaRequest *mediaRequest = findMediaRequest(false, requestIdStr);
-	BluetoothAvrcpRequestId requestId = findRequestId(false, requestIdStr);
+	MediaRequest *mediaRequest = findMediaRequest(false, requestIdStr, adapterAddress);
+	BluetoothAvrcpRequestId requestId = findRequestId(false, requestIdStr, adapterAddress);
 	if (!mediaRequest || BLUETOOTH_AVRCP_REQUEST_ID_INVALID == requestId)
 	{
 		LSUtils::respondWithError(request, BT_ERR_AVRCP_REQUESTID_NOT_EXIST);
@@ -519,8 +542,8 @@ bool BluetoothAvrcpProfileService::supplyMediaPlayStatus(LSMessage &message)
 
 	BT_INFO("AVRCP", 0, "Service calls SIL API : supplyMediaPlayStatus");
 	getImpl<BluetoothAvrcpProfile>(adapterAddress)->supplyMediaPlayStatus(requestId, playStatus, requestCallback);
-	deleteMediaRequest(false, requestIdStr);
-	deleteMediaRequestId(false, requestIdStr);
+	deleteMediaRequest(false, requestIdStr, adapterAddress);
+	deleteMediaRequestId(false, requestIdStr, adapterAddress);
 
 	return true;
 }
@@ -1785,11 +1808,29 @@ void BluetoothAvrcpProfileService::mediaMetaDataRequested(BluetoothAvrcpRequestI
 	createMediaRequest(true, requestId, address);
 }
 
+void BluetoothAvrcpProfileService::mediaMetaDataRequested(
+	BluetoothAvrcpRequestId requestId, const std::string &adapterAddress,
+	const std::string &address)
+{
+	BT_INFO("AVRCP", 0, "Observer is called multiAdapter: [%s : %d]", __FUNCTION__, __LINE__);
+
+	createMediaRequest(true, requestId, adapterAddress, address);
+}
+
 void BluetoothAvrcpProfileService::mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address)
 {
 	BT_INFO("AVRCP", 0, "Observer is called : [%s : %d]", __FUNCTION__, __LINE__);
 
 	createMediaRequest(false, requestId, address);
+}
+
+void BluetoothAvrcpProfileService::mediaPlayStatusRequested(
+	BluetoothAvrcpRequestId requestId, const std::string &adapterAddress,
+	const std::string &address)
+{
+	BT_INFO("AVRCP", 0, "Observer is called multiAdapter: [%s : %d]", __FUNCTION__, __LINE__);
+
+	createMediaRequest(false, requestId, adapterAddress, address);
 }
 
 void BluetoothAvrcpProfileService::mediaDataReceived(const BluetoothMediaMetaData& metaData, const std::string& address)
@@ -2219,6 +2260,61 @@ void BluetoothAvrcpProfileService::assignRequestId(MediaRequest *request)
 	request->requestId = nextRequestIdStr;
 }
 
+void BluetoothAvrcpProfileService::createMediaRequest(
+	bool metaData, BluetoothAvrcpRequestId requestId, const std::string &adapterAddress,
+	const std::string &address)
+{
+	BluetoothClientWatch *watch;
+	if (metaData)
+	{
+		watch = getMediaRequestWatch(mIncomingMediaMetaDataWatchesForMultipleAdapters,
+									 adapterAddress);
+	}
+	else
+	{
+		watch = getMediaRequestWatch(
+			mIncomingMediaPlayStatusWatchesForMultipleAdapters, adapterAddress);
+	}
+
+	if (!watch)
+		return;
+	MediaRequest *request = new MediaRequest();
+	request->address = address;
+
+	if (mNextRequestId > BLUETOOTH_PROFILE_AVRCP_MAX_REQUEST_ID)
+		mNextRequestId = 1;
+
+	assignRequestId(request);
+
+    std::map<std::string, MediaRequest*> mediaRequest;
+	mediaRequest.insert(std::pair<std::string, MediaRequest*> (adapterAddress, request));
+	std::map<std::string, BluetoothAvrcpRequestId> mediaRequestId;
+	mediaRequestId.insert(std::pair<std::string, BluetoothAvrcpRequestId> (adapterAddress, requestId));
+	if (metaData)
+	{
+		mMediaMetaDataRequestsMultiAdapters.insert(
+			std::pair<uint64_t, std::map<std::string, MediaRequest *>>(mRequestIndex, mediaRequest));
+		mMediaMetaDataRequestIdsMultiAdapters.insert(
+			std::pair<uint64_t, std::map<std::string, BluetoothAvrcpRequestId>>(mRequestIndex, mediaRequestId));
+	}
+	else
+	{
+		mMediaPlayStatusRequestsMultiAdapters.insert(
+			std::pair<uint64_t, std::map<std::string, MediaRequest *>>(mRequestIndex, mediaRequest));
+		mMediaPlayStatusRequestIdsMultiAdapters.insert(
+			std::pair<uint64_t, std::map<std::string, BluetoothAvrcpRequestId>>(mRequestIndex, mediaRequestId));
+	}
+	mRequestIndex++;
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("subscribed", true);
+	responseObj.put("address", address);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("requestId",  request->requestId);
+	LSUtils::postToClient(watch->getMessage(), responseObj);
+}
+
 void BluetoothAvrcpProfileService::createMediaRequest(bool metaData, uint64_t requestId, const std::string &address)
 {
 	if (metaData)
@@ -2281,6 +2377,24 @@ void BluetoothAvrcpProfileService::deleteMediaRequestId(bool metaData, const std
 	}
 }
 
+void BluetoothAvrcpProfileService::deleteMediaRequestId(
+	bool metaData, const std::string &requestIdStr, const std::string &adapterAddress)
+{
+	std::map<uint64_t, std::map<std::string, BluetoothAvrcpRequestId> > *requests;
+	if (metaData)
+	{
+		requests = &mMediaMetaDataRequestIdsMultiAdapters;
+	}
+	else
+	{
+		requests = &mMediaPlayStatusRequestIdsMultiAdapters;
+	}
+	uint64_t requestIndex = getRequestIndex(metaData, requestIdStr, adapterAddress);
+	auto idIter = requests->find(requestIndex);
+	if (idIter != requests->end())
+		requests->erase(idIter);
+}
+
 void BluetoothAvrcpProfileService::deleteMediaRequest(bool metaData, const std::string &requestIdStr)
 {
 	std::map<uint64_t, MediaRequest*> *mapRequests;
@@ -2304,6 +2418,39 @@ void BluetoothAvrcpProfileService::deleteMediaRequest(bool metaData, const std::
 	}
 }
 
+void BluetoothAvrcpProfileService::deleteMediaRequest(bool metaData, const std::string &requestIdStr,
+													  const std::string &adapterAddress)
+{
+	MediaRequest *mediaRequest = NULL;
+	std::map<uint64_t, std::map<std::string, MediaRequest*> > *mapRequests;
+	if (metaData)
+	{
+		mapRequests = &mMediaMetaDataRequestsMultiAdapters;
+	}
+	else
+		mapRequests = &mMediaPlayStatusRequestsMultiAdapters;
+
+	std::map<std::string, MediaRequest*> mediaRequestMap;
+	for (auto propIter = mapRequests->begin(); propIter != mapRequests->end(); ++propIter)
+	{
+		mediaRequestMap = propIter->second;
+		auto requestAdapter = mediaRequestMap.find(adapterAddress);
+		if (requestAdapter != mediaRequestMap.end())
+		{
+			MediaRequest *request = requestAdapter->second;
+			if (NULL == request)
+				continue;
+
+			if (request->requestId == requestIdStr)
+			{
+				delete request;
+				mapRequests->erase(propIter);
+				break;
+			}
+		}
+	}
+}
+
 BluetoothAvrcpRequestId BluetoothAvrcpProfileService::findRequestId(bool metaData, const std::string &requestIdStr)
 {
 	BluetoothAvrcpRequestId requestId = BLUETOOTH_AVRCP_REQUEST_ID_INVALID;
@@ -2321,6 +2468,33 @@ BluetoothAvrcpRequestId BluetoothAvrcpProfileService::findRequestId(bool metaDat
 			requestId = idIter->second;
 	}
 
+	return requestId;
+}
+
+BluetoothAvrcpRequestId BluetoothAvrcpProfileService::findRequestId(
+	bool metaData, const std::string &requestIdStr,
+	const std::string &adapterAddress)
+{
+	BT_INFO("AVRCP", 0, "findRequestId: %s==%s", adapterAddress.c_str(), requestIdStr.c_str());
+	BluetoothAvrcpRequestId requestId = BLUETOOTH_AVRCP_REQUEST_ID_INVALID;
+	std::map<uint64_t, std::map<std::string, BluetoothAvrcpRequestId> > *requests;
+	uint64_t requestIndex = getRequestIndex(metaData, requestIdStr, adapterAddress);
+	if (metaData)
+	{
+		requests = &mMediaMetaDataRequestIdsMultiAdapters;
+	}
+	else
+	{
+		requests = &mMediaPlayStatusRequestIdsMultiAdapters;
+	}
+
+	auto idIter = requests->find(requestIndex);
+	if (idIter != requests->end())
+	{
+		auto requestIdMap = idIter->second.find(adapterAddress);
+		if (requestIdMap != idIter->second.end())
+			requestId = requestIdMap->second;
+	}
 	return requestId;
 }
 
@@ -2346,6 +2520,39 @@ uint64_t BluetoothAvrcpProfileService::getRequestIndex(bool metaData, const std:
 	return requestIndex;
 }
 
+uint64_t BluetoothAvrcpProfileService::getRequestIndex(
+	bool metaData, const std::string &requestIdStr, const std::string &adapterAddress)
+{
+	uint64_t requestIndex = 0;
+	std::map<uint64_t, std::map<std::string, MediaRequest*> > *mapRequests;
+	if (metaData)
+	{
+		mapRequests = &mMediaMetaDataRequestsMultiAdapters;
+	}
+	else
+		mapRequests = &mMediaPlayStatusRequestsMultiAdapters;
+
+	std::map<std::string, MediaRequest*> mediaRequestMap;
+	for (auto propIter = mapRequests->begin(); propIter != mapRequests->end(); ++propIter)
+	{
+		mediaRequestMap = propIter->second;
+		auto requestMap = mediaRequestMap.find(adapterAddress);
+		if (requestMap != mediaRequestMap.end())
+		{
+			MediaRequest *request = requestMap->second;
+			if (NULL == request)
+				continue;
+
+			if (request->requestId == requestIdStr)
+			{
+				requestIndex = (int64_t)propIter->first;
+				break;
+			}
+		}
+	}
+	return requestIndex;
+}
+
 BluetoothAvrcpProfileService::MediaRequest* BluetoothAvrcpProfileService::findMediaRequest(bool metaData, const std::string &requestIdStr)
 {
 	MediaRequest *mediaRequest = NULL;
@@ -2365,6 +2572,40 @@ BluetoothAvrcpProfileService::MediaRequest* BluetoothAvrcpProfileService::findMe
 		{
 			mediaRequest = request;
 			break;
+		}
+	}
+
+	return mediaRequest;
+}
+
+BluetoothAvrcpProfileService::MediaRequest *BluetoothAvrcpProfileService::findMediaRequest(
+	bool metaData, const std::string &requestIdStr, const std::string &adapterAddress)
+{
+	MediaRequest *mediaRequest = NULL;
+	std::map<uint64_t, std::map<std::string, MediaRequest*> > *mapRequests;
+	if (metaData)
+	{
+		mapRequests = &mMediaMetaDataRequestsMultiAdapters;
+	}
+	else
+		mapRequests = &mMediaPlayStatusRequestsMultiAdapters;
+
+	std::map<std::string, MediaRequest*> mediaRequestMap;
+	for (auto propIter = mapRequests->begin(); propIter != mapRequests->end(); ++propIter)
+	{
+		mediaRequestMap = propIter->second;
+		auto requestMap = mediaRequestMap.find(adapterAddress);
+		if (requestMap != mediaRequestMap.end())
+		{
+			MediaRequest *request = requestMap->second;
+			if (NULL == request)
+				continue;
+
+			if (request->requestId == requestIdStr)
+			{
+				mediaRequest = request;
+				break;
+			}
 		}
 	}
 
