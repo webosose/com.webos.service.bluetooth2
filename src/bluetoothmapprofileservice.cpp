@@ -183,11 +183,10 @@ bool BluetoothMapProfileService::requiredCheckForMapProfile(LS::Message &request
 
 	std::string deviceAddress = requestObj["address"].asString();
 
-	BluetoothDevice *device = getManager()->findDevice(adapterAddress,deviceAddress);
-	if (!device)
+	if (!getManager()->findDevice(adapterAddress,deviceAddress))
 	{
 		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return true;
+		return false;
 	}
 
 	if (!BluetoothProfileService::isDevicePaired(adapterAddress, deviceAddress))
@@ -195,8 +194,8 @@ bool BluetoothMapProfileService::requiredCheckForMapProfile(LS::Message &request
 		LSUtils::respondWithError(request, BT_ERR_DEV_NOT_PAIRED);
 		return false;
 	}
-	BluetoothProfile *impl = findImpl(adapterAddress);
-	if (!impl && !getImpl<BluetoothPbapProfile>(adapterAddress))
+
+	if (!getImpl<BluetoothMapProfile>(adapterAddress))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return false;
@@ -470,8 +469,7 @@ bool BluetoothMapProfileService::prepareConnect(LS::Message &request, pbnjson::J
 		return false;
 	}
 
-	BluetoothProfile *impl = findImpl(adapterAddress);
-	if (!impl && !getImpl<BluetoothMapProfile>(adapterAddress))
+	if (!getImpl<BluetoothMapProfile>(adapterAddress))
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return false;
