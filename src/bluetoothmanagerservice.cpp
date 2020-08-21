@@ -267,7 +267,7 @@ bool BluetoothManagerService::isRequestedAdapterAvailable(LS::Message &request, 
 		return false;
 	}
 	/*Request either from host or no session exist*/
-	else if (displayId == LSUtils::DisplaySetId::HOST)
+	else
 	{
 		if (requestObj.hasKey("adapterAddress"))
 		{
@@ -289,11 +289,6 @@ bool BluetoothManagerService::isRequestedAdapterAvailable(LS::Message &request, 
 				return false;
 			}
 		}
-	}
-	else
-	{
-		LSUtils::respondWithError(request, BT_ERR_ADAPTER_NOT_AVAILABLE);
-		return false;
 	}
 
 	return true;

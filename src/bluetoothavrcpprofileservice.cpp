@@ -277,10 +277,11 @@ void BluetoothAvrcpProfileService::clearPlayerInfo(
 	if (playerInfoListIter != mPlayerInfoListForMultipleAdapters.end())
 	{
 		(playerInfoListIter->second).erase(address);
-	}
-	if ((playerInfoListIter->second).empty())
-	{
-		mPlayerInfoListForMultipleAdapters.erase(adapterAddress);
+
+		if ((playerInfoListIter->second).empty())
+		{
+			mPlayerInfoListForMultipleAdapters.erase(adapterAddress);
+		}
 	}
 }
 
@@ -291,11 +292,13 @@ void BluetoothAvrcpProfileService::clearCurrentFolder(
 	if (listIter != mCurrentFolderForMultipleAdapters.end())
 	{
 		(listIter->second).erase(address);
+
+		if ((listIter->second).empty())
+		{
+			mCurrentFolderForMultipleAdapters.erase(adapterAddress);
+		}
 	}
-	if ((listIter->second).empty())
-	{
-		mCurrentFolderForMultipleAdapters.erase(adapterAddress);
-	}
+
 }
 
 void BluetoothAvrcpProfileService::clearPlayStatus(
@@ -305,10 +308,11 @@ void BluetoothAvrcpProfileService::clearPlayStatus(
 	if (listIter != mPlayStatusForMultipleAdapters.end())
 	{
 		(listIter->second).erase(address);
-	}
-	if ((listIter->second).empty())
-	{
-		mPlayStatusForMultipleAdapters.erase(adapterAddress);
+
+		if ((listIter->second).empty())
+		{
+			mPlayStatusForMultipleAdapters.erase(adapterAddress);
+		}
 	}
 }
 

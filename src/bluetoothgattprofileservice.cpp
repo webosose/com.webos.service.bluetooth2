@@ -3150,7 +3150,7 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 	{
 		BT_ERROR("GATT_SERVER_NOT_FOUND", 0,
 					 "Server %s not exist for %s adapterAddress",
-					 applicationUuid.toString().c_str(), adapterAddress);
+					 applicationUuid.toString().c_str(), adapterAddress.c_str());
 		safe_callback(callback, BLUETOOTH_ERROR_FAIL);
 		return;
 	}

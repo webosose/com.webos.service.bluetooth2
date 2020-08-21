@@ -479,8 +479,11 @@ void BluetoothManagerAdapter::devicePropertiesChanged(const std::string &address
 	BT_DEBUG("Properties of device %s have changed", address.c_str());
 
 	auto device = findDevice(address);
+	if(!device)
+		return;
+
 	bool prevPairedState = device->getPaired();
-	if (device && device->update(properties))
+	if (device->update(properties))
 	{
 		notifySubscribersFilteredDevicesChanged();
 		notifySubscribersDevicesChanged();
