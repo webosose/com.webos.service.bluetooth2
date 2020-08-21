@@ -282,21 +282,6 @@ bool BluetoothOppProfileService::prepareFileTransfer(LS::Message &request, pbnjs
 
 		return false;
 	}
-
-	std::string deviceAddress = requestObj["address"].asString();
-
-	if (!getManager()->isDeviceAvailable(deviceAddress))
-	{
-		LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
-		return false;
-	}
-
-	if (!isDeviceConnected(deviceAddress))
-	{
-		LSUtils::respondWithError(request, BT_ERR_OPP_NOT_CONNECTED);
-		return false;
-	}
-
         return true;
 }
 
@@ -397,6 +382,12 @@ bool BluetoothOppProfileService::pushFile(LSMessage &message)
 		return true;
 
 	std::string deviceAddress =  requestObj["address"].asString();
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_OPP_NOT_CONNECTED);
+		return false;
+	}
 
 	// Every outgoing file is coming from /media/internal and that is
 	// also the root path from the ls2 API perspective.
