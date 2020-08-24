@@ -406,7 +406,7 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 	LocalService* findLocalServiceByCharId(uint16_t charId,  const std::string &adapterAddress);
 	LocalServer* getLocalServer(const std::string &serverUuid);
 	BluetoothGattService getLocalService(const std::string &serviceUuid, const std::string &adapterAddress);
-	BluetoothGattServiceList getLocalServices();
+	BluetoothGattServiceList getLocalServices(const std::string &adapterAddress);
 
 	bool getLocalCharacteristic(const uint16_t &handle, BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress);
 	bool getLocalDescriptor(const uint16_t &handle, BluetoothGattDescriptor &descriptor, const std::string &adapterAddress);
@@ -421,10 +421,12 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 			const std::string &adapterAddress);
 
 	void readLocalCharacteristics(
+			const std::string &adapterAddress,
 			const BluetoothUuid &service,
 			const BluetoothUuidList &characteristics,
 			BluetoothGattReadCharacteristicsCallback callback);
-	void readLocalDescriptors(const BluetoothUuid& service,
+	void readLocalDescriptors(const std::string &adapterAddress,
+		const BluetoothUuid& service,
 		const BluetoothUuid &characteristic,
 		const BluetoothUuidList &descriptors,
 		BluetoothGattReadDescriptorsCallback callback);
@@ -490,8 +492,8 @@ public:
 
 	void serviceFound(const std::string &address, const BluetoothGattService &service);
 	void serviceLost(const std::string &address, const BluetoothGattService &service);
-	void characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic);
-	void characteristicValueChanged(const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic);
+	void characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress);
+	void characteristicValueChanged(const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress);
 	void descriptorValueChanged(const BluetoothUuid &service, const BluetoothUuid &characteristic, BluetoothGattDescriptor &descriptor);
 	void incomingLeConnectionRequest(const std::string &address, bool state);
 

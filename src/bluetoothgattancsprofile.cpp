@@ -736,7 +736,7 @@ void BluetoothGattAncsProfile::handleNotificationClientDisappeared(const std::st
 	});
 }
 
-void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic)
+void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress)
 {
 	BT_INFO("ANCS", 0, "characteristic %s", characteristic.getUuid().toString().c_str());
 	if ((characteristic.getUuid() == BluetoothUuid(NOTIFICATION_SOURCE_UUID)) && (service == mAncsUuid))
@@ -761,7 +761,7 @@ void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &add
 			pbnjson::JValue responseObj = pbnjson::Object();
 			responseObj.put("returnValue", true);
 			responseObj.put("subscribed", true);
-			responseObj.put("adapterAddress", getManager()->getAddress());
+			responseObj.put("adapterAddress", adapterAddress);
 			responseObj.put("address", address);
 
 			if (ancsStatus.find(eventID) != ancsStatus.end())
@@ -939,7 +939,7 @@ void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &add
 			}
 			pbnjson::JValue responseObj = pbnjson::Object();
 			responseObj.put("returnValue", true);
-			responseObj.put("adapterAddress", getManager()->getAddress());
+			responseObj.put("adapterAddress", adapterAddress);
 			responseObj.put("address", address);
 			responseObj.put("attributes", attributeListObj);
 			responseObj.put("subscribed", false);
@@ -950,7 +950,7 @@ void BluetoothGattAncsProfile::characteristicValueChanged(const std::string &add
 			DELETE_OBJ(mNotificationQueryInfo)
 
 			BT_DEBUG("[%s](%d) getImpl->changeCharacteristicWatchStatus\n", __FUNCTION__, __LINE__);
-			getImpl<BluetoothGattProfile>(getManager()->getAddress())->changeCharacteristicWatchStatus (address, mAncsUuid, BluetoothUuid(DATA_SOURCE_UUID), false, [this](BluetoothError error)
+			getImpl<BluetoothGattProfile>(adapterAddress)->changeCharacteristicWatchStatus (address, mAncsUuid, BluetoothUuid(DATA_SOURCE_UUID), false, [this](BluetoothError error)
 			{
 			      BT_DEBUG("Found all attributes. Remove CharacteristicWatch for DATA_SOURCE_UUID");
 			});

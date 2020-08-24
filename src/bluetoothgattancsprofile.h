@@ -107,7 +107,7 @@ private:
 
 	//Observer callback
 	void incomingLeConnectionRequest(const std::string &address, bool state);
-	void characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic);
+	void characteristicValueChanged(const std::string &address, const BluetoothUuid &service, const BluetoothGattCharacteristic &characteristic, const std::string &adapterAddress);
 
 private:
 	LS::SubscriptionPoint mGetConnectionRequestSubscriptions;
