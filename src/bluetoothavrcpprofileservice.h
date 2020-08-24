@@ -80,6 +80,7 @@ public:
 	bool changePath(LSMessage &message);
 	bool playItem(LSMessage &message);
 	bool addToNowPlaying(LSMessage &message);
+	bool search(LSMessage &message);
 
 	void mediaMetaDataRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
 	void mediaPlayStatusRequested(BluetoothAvrcpRequestId requestId, const std::string &address);
