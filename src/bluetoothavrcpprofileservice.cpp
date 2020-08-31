@@ -63,6 +63,7 @@ BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerServi
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getRemoteVolume)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, receivePassThroughCommand)
 		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, getPlayerInfo)
+		LS_CATEGORY_CLASS_METHOD(BluetoothAvrcpProfileService, notifyMediaPlayStatus)
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, internal)
@@ -3498,6 +3499,85 @@ bool BluetoothAvrcpProfileService::search(LSMessage &message)
 	};
 
 	impl->search(requestObj["searchString"].asString(), searchCallback);
+
+	return true;
+}
+
+bool BluetoothAvrcpProfileService::notifyMediaPlayStatus(LSMessage &message)
+{
+	BT_INFO("AVRCP", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(address, string),
+		OBJECT(playbackStatus, OBJSCHEMA_3(PROP(duration, integer), PROP(position, integer), PROP(status, string))),
+		PROP(adapterAddress, string))
+		REQUIRED_2(address, playbackStatus));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (JSON_PARSE_SCHEMA_ERROR != parseError)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("address"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
+		else if (!requestObj.hasKey("playbackStatus"))
+			LSUtils::respondWithError(request, BT_ERR_AVRCP_PLAYBACK_STATUS_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothAvrcpProfile *impl = getImpl<BluetoothAvrcpProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string deviceAddress;
+	deviceAddress = convertToLower(requestObj["address"].asString());
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
+	}
+
+	auto playStatusObj = requestObj["playbackStatus"];
+	BluetoothMediaPlayStatus playStatus;
+	parseMediaPlayStatus(playStatusObj, &playStatus);
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+
+	auto requestCallback = [this, requestMessage, adapterAddress, deviceAddress](BluetoothError error)
+	{
+		BT_INFO("AVRCP", 0, "Return of notifyMediaPlayStatus is %d", error);
+
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(requestMessage, error);
+			return;
+		}
+
+		pbnjson::JValue responseObj = pbnjson::Object();
+		responseObj.put("returnValue", true);
+		responseObj.put("adapterAddress", adapterAddress);
+		responseObj.put("address", deviceAddress);
+		LSUtils::postToClient(requestMessage, responseObj);
+		LSMessageUnref(requestMessage);
+
+	};
+
+	BT_INFO("AVRCP", 0, "Service calls SIL API : notifyMediaPlayStatus");
+	impl->notifyMediaPlayStatus(playStatus, requestCallback);
 
 	return true;
 }

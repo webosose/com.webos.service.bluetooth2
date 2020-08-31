@@ -60,6 +60,7 @@ public:
 	bool supplyMediaMetaData(LSMessage &message);
 	bool awaitMediaPlayStatusRequest(LSMessage &message);
 	bool supplyMediaPlayStatus(LSMessage &message);
+	bool notifyMediaPlayStatus(LSMessage &message);
 	bool sendPassThroughCommand(LSMessage &message);
 	bool getMediaMetaData(LSMessage &message);
 	bool getMediaPlayStatus(LSMessage &message);

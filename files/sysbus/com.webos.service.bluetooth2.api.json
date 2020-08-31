@@ -212,6 +212,7 @@
         "com.webos.service.bluetooth2/avrcp/setPlayerApplicationSettings",
         "com.webos.service.bluetooth2/avrcp/supplyMediaMetaData",
         "com.webos.service.bluetooth2/avrcp/supplyMediaPlayStatus",
+        "com.webos.service.bluetooth2/avrcp/notifyMediaPlayStatus",
         "com.webos.service.bluetooth2/avrcp/getPlayerInfo",
         "com.webos.service.bluetooth2/avrcp/internal/disable",
         "com.webos.service.bluetooth2/avrcp/internal/enable",
