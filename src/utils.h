@@ -26,6 +26,10 @@ std::string convertToUpper(const std::string &input);
 
 bool checkPathExists(const std::string &path);
 bool checkFileIsValid(const std::string &path);
+bool changeGroup(const std::string &groupName, const std::string &fileName);
+bool changeFilePermission(const std::string &permission, const std::string &fileName);
+bool changeFolderPermission(const std::string &permission, const std::string &folderName);
+bool changeFolderGroup(const std::string &groupName, const std::string &folderName);
 std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
 
 void write_kernel_log(const char *message);

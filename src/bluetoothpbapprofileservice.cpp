@@ -25,6 +25,7 @@
 #include "config.h"
 
 #define BLUETOOTH_PROFILE_PBAP_MAX_REQUEST_ID 999
+#define PBAP_MOUNT_PATH "/media/internal/pbap"
 
 BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService *manager) :
         BluetoothProfileService(manager, "PBAP", "00001130-0000-1000-8000-00805f9b34fb"),
@@ -158,7 +159,22 @@ void BluetoothPbapProfileService::transferStatusChanged(const std::string &adapt
 			if ("error" == state)
 				responseObj.put("returnValue",false);
 			else
+			{
+
+#ifdef MULTI_SESSION_SUPPORT
+				if (!changeFolderGroup("vcardshare", PBAP_MOUNT_PATH))
+				{
+					BT_DEBUG("changing Group failed for %s", destinationPath.c_str());
+				}
+
+				if (!changeFolderPermission("770", PBAP_MOUNT_PATH))
+				{
+					BT_DEBUG("changing FolderPermission failed for %s", destinationPath.c_str());
+				}
+#endif
 				responseObj.put("returnValue",true);
+			}
+
 			LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
 			mGetPhoneBookSubscriptions.erase(itr);
 			delete subscriptionPoint;
@@ -1343,6 +1359,19 @@ void BluetoothPbapProfileService::notifyPullVcardRequest(LS::Message &request, B
 		LSUtils::respondWithError(request, error);
 		return;
 	}
+
+#ifdef MULTI_SESSION_SUPPORT
+	if (!changeFolderGroup("vcardshare", PBAP_MOUNT_PATH))
+	{
+		BT_DEBUG("changing Group failed for %s", destinationFile.c_str());
+	}
+
+	if (!changeFolderPermission("770", PBAP_MOUNT_PATH))
+	{
+		BT_DEBUG("changing FolderPermission failed for %s", destinationFile.c_str());
+	}
+#endif
+
 	pbnjson::JValue responseObj = pbnjson::Object();
 	appendGenericPullResponse(responseObj,adapterAddress,address,destinationFile);
 	LSUtils::postToClient(request, responseObj);

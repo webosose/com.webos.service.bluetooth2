@@ -148,3 +148,77 @@ std::string replaceString(std::string subject, const std::string& search, const 
     }
     return subject;
 }
+
+bool changeGroup(const std::string &groupName, const std::string &fileName)
+{
+	std::string testfileName = fileName;
+
+	if (testfileName.length() == 0)
+		return false;
+
+	if (g_file_test(fileName.c_str(), (GFileTest) G_FILE_TEST_IS_SYMLINK))
+		return false;
+
+	if (!g_file_test(testfileName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
+		return false;
+
+	std::string command = "chgrp " + groupName + " " + testfileName;
+	system(command.c_str());
+	return true;
+
+}
+
+bool changeFilePermission(const std::string &permission, const std::string &fileName)
+{
+	std::string testfileName = fileName;
+
+	if (testfileName.length() == 0)
+		return false;
+
+	if (g_file_test(fileName.c_str(), (GFileTest) G_FILE_TEST_IS_SYMLINK))
+		return false;
+
+	if (!g_file_test(testfileName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
+		return false;
+
+	std::string command = "chmod " + permission + " " + testfileName;
+	system(command.c_str());
+	return true;
+}
+
+bool changeFolderPermission(const std::string &permission, const std::string &folderName)
+{
+	std::string testfolderName = folderName;
+
+	if (testfolderName.length() == 0)
+		return false;
+
+	if (g_file_test(folderName.c_str(), (GFileTest) G_FILE_TEST_IS_SYMLINK))
+		return false;
+
+	if (!g_file_test(testfolderName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
+		return false;
+
+	std::string command = "chmod -R " + permission + " " + testfolderName;
+	system(command.c_str());
+	return true;
+}
+
+bool changeFolderGroup(const std::string &groupName, const std::string &folderName)
+{
+	std::string testfolderName = folderName;
+
+	if (testfolderName.length() == 0)
+		return false;
+
+	if (g_file_test(folderName.c_str(), (GFileTest) G_FILE_TEST_IS_SYMLINK))
+		return false;
+
+	if (!g_file_test(testfolderName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
+		return false;
+
+	std::string command = "chgrp -R " + groupName + " " + testfolderName;
+	system(command.c_str());
+	return true;
+
+}
