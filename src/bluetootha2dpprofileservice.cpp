@@ -650,6 +650,12 @@ bool BluetoothA2dpProfileService::getCodecConfiguration(LSMessage &message)
 
 void BluetoothA2dpProfileService::delayReportChanged(const std::string &adapterAddress, const std::string &address, uint16_t delay)
 {
+	if (!isDeviceConnected(adapterAddress, address))
+	{
+		BT_INFO("A2DP", 0, "Device is not connected so ignoring delay report for adapter %s device %", adapterAddress.c_str(), address.c_str());
+		return;
+	}
+
 	auto it = mRemoteDelay.find(address);
 	if (it == mRemoteDelay.end())
 	{
@@ -718,6 +724,12 @@ bool BluetoothA2dpProfileService::getDelayReportingTime(LSMessage &message)
 			LSUtils::respondWithError(request, BT_ERR_DEVICE_NOT_AVAIL);
 			return true;
 		}
+	}
+
+	if (!isDeviceConnected(adapterAddress, deviceAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_NOT_CONNECTED);
+		return true;
 	}
 
 	BluetoothError error = BLUETOOTH_ERROR_NONE;
