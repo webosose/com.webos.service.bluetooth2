@@ -652,7 +652,7 @@ void BluetoothA2dpProfileService::delayReportChanged(const std::string &adapterA
 {
 	if (!isDeviceConnected(adapterAddress, address))
 	{
-		BT_INFO("A2DP", 0, "Device is not connected so ignoring delay report for adapter %s device %", adapterAddress.c_str(), address.c_str());
+		BT_INFO("A2DP", 0, "Device is not connected so ignoring delay report for adapter %s device %s", adapterAddress.c_str(), address.c_str());
 		return;
 	}
 
