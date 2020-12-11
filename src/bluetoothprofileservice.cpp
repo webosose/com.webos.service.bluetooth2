@@ -770,6 +770,13 @@ bool BluetoothProfileService::enable(LSMessage &message)
 		return true;
 	}
 
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl && !getImpl<BluetoothA2dpProfile>(adapterAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
 	auto adapter = mManager->findAdapterInfo(adapterAddress);
 	if(adapter && !adapter->getPowerState())
 	{
@@ -791,7 +798,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 		return true;
 	}
 
-	auto enableCallback = [this, requestMessage, adapterAddress](BluetoothError error) {
+	auto enableCallback = [this, impl, requestMessage, adapterAddress](BluetoothError error) {
 		LS::Message request(requestMessage);
 		mEnabledRoles.pop_back();
 
@@ -804,7 +811,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 		}
 		if(mEnabledRoles.size() > 0)
 		{
-			mImpl->enable(mEnabledRoles.back(), mCallback);
+			impl->enable(mEnabledRoles.back(), mCallback);
 			return;
 		}
 		pbnjson::JValue responseObj = pbnjson::Object();
@@ -819,7 +826,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 
 	initialize();
 
-	if(mImpl)
+	if(impl)
 	{
 		mEnabledRoles = strToProfileRole(role);
 		if(mEnabledRoles.size() == 0)
@@ -828,7 +835,7 @@ bool BluetoothProfileService::enable(LSMessage &message)
 			return true;
 		}
 		mCallback = enableCallback;
-		mImpl->enable(mEnabledRoles.back(), mCallback);
+		impl->enable(mEnabledRoles.back(), mCallback);
 	}
 	return true;
 }
@@ -840,19 +847,7 @@ bool BluetoothProfileService::disable(LSMessage &message)
 	std::string adapterAddress;
 	int parseError = 0;
 
-	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-	{
-		return true;
-	}
-
-	BluetoothProfile *impl = findImpl(adapterAddress);
-	if (!impl)
-	{
-		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
-		return true;
-	}
-
-	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(address, string), PROP(role, string)));
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string), PROP(role, string)));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -866,6 +861,13 @@ bool BluetoothProfileService::disable(LSMessage &message)
 
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 	{
+		return true;
+	}
+
+	BluetoothProfile *impl = findImpl(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return true;
 	}
 

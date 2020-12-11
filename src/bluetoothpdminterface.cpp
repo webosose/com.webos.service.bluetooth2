@@ -24,6 +24,7 @@
 #include "logging.h"
 #include "servicewatch.h"
 #include "utils.h"
+#include "bluetoothprofileservice.h"
 #include <map>
 
 #define PDM_SERVICE "com.webos.service.pdm"
@@ -180,6 +181,34 @@ void BluetoothPdmInterface::assignAdaptersToDisplays(pbnjson::JValue &replyObj)
 					auto removeAdapterPath = "rm -rf /var/lib/bluetooth/" + convertToUpper(adapter->getAddress());
 					system(removeAdapterPath.c_str());
 					mBluetootManager->findAdapterInfo(adapterAddress)->getAdapter()->setAdapterProperty(BluetoothProperty(BluetoothProperty::Type::ALIAS, adapterName), adapterNameChanged);
+
+					auto enableCallback = [this](BluetoothError error) {
+						if (error == BLUETOOTH_ERROR_NONE)
+						{
+							BT_DEBUG("pdmInterface adapter name changed");
+							return;
+						}
+					};
+
+					auto adapter = mBluetootManager->getAdapter(adapterAddress);
+					if (!adapter)
+						return;
+
+					std::string a2dpRoleUuid;
+					if (adapterName == "sa8155 Bluetooth hci0" || adapterName == "sa8155 Bluetooth hci1")
+					{
+						a2dpRoleUuid = "0000110a-0000-1000-8000-00805f9b34fb";
+					}
+					else if (adapterName == "sa8155 Bluetooth hci2")
+					{
+						a2dpRoleUuid = "0000110b-0000-1000-8000-00805f9b34fb";
+					}
+
+					BluetoothProfile *a2dpImpl = adapter->getProfile("A2DP");
+					if (a2dpImpl)
+					{
+						a2dpImpl->enable(a2dpRoleUuid, enableCallback);
+					}
 				}
 			}
 		}
