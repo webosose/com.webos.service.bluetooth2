@@ -1,0 +1,7 @@
+{
+    "allowedNames": ["com.webos.service.bluetooth2"],
+          "bluetooth.query": ["dev"],
+          "bluetooth.operation": ["dev"],
+          "bluetooth.management": ["oem"],
+          "bluetooth.devutility": ["oem"]
+}

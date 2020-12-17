@@ -1,6 +1,7 @@
 {
     "exeName":"@WEBOS_INSTALL_SBINDIR@/webos-bluetooth-service",
     "type": "regular",
+    "trustlevel": ["oem"],
     "allowedNames": ["com.webos.service.bluetooth2"],
     "permissions": [
         {
