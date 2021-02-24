@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 LG Electronics, Inc.
+// Copyright (c) 2016-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -241,7 +241,7 @@ bool BluetoothHidProfileService::setReport(LSMessage &message)
 
 	auto reportDataObjArray = requestObj["reportData"];
 	uint16_t reportSize = reportDataObjArray.arraySize();
-	char reportData[reportSize];
+	uint8_t reportData[reportSize];
 
 	for (int n = 0; n < reportDataObjArray.arraySize(); n++)
 	{
@@ -274,7 +274,7 @@ bool BluetoothHidProfileService::setReport(LSMessage &message)
 	};
 
 	BT_INFO("HID", 0, "Service calls SIL API : setReport");
-	getImpl<BluetoothHidProfile>()->setReport(deviceAddress,reportType, (uint8_t*)reportData, reportSize, setReportCallback);
+	getImpl<BluetoothHidProfile>()->setReport(deviceAddress,reportType, reportData, reportSize, setReportCallback);
 
 	return true;
 }
@@ -333,7 +333,7 @@ bool BluetoothHidProfileService::sendData(LSMessage &message)
 
 	auto dataObjArray = requestObj["reportData"];
 	uint16_t dataSize = dataObjArray.arraySize();
-	char data[dataSize];
+	uint8_t data[dataSize];
 
 	for (int n = 0; n < dataObjArray.arraySize(); n++)
 	{
@@ -341,7 +341,7 @@ bool BluetoothHidProfileService::sendData(LSMessage &message)
 	}
 
 	BT_INFO("HID", 0, "Service calls SIL API : sendData");
-	BluetoothError error = getImpl<BluetoothHidProfile>()->sendData(deviceAddress, (uint8_t*)data, dataSize);
+	BluetoothError error = getImpl<BluetoothHidProfile>()->sendData(deviceAddress, data, dataSize);
 	BT_INFO("HID", 0, "Return of sendData is %d", error);
 
 	pbnjson::JValue responseObj = pbnjson::Object();

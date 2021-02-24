@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 LG Electronics, Inc.
+// Copyright (c) 2019-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -135,7 +135,6 @@ public:
 	BluetoothLinkKey findLinkKey(const std::string &address) const;
 	void updateSupportedServiceClasses(const std::vector<std::string> uuids);
 
-	void appendCurrentStatus(pbnjson::JValue &object);
 	void appendFilteringDevices(std::string senderName, pbnjson::JValue &object);
 	void appendConnectedDevices(pbnjson::JValue &object);
 	void appendPairedDevices(pbnjson::JValue &object);
@@ -146,7 +145,6 @@ public:
 	void appendLeDevicesByScanId(pbnjson::JValue &object, uint32_t scanId);
 	void appendSupportedServiceClasses(pbnjson::JValue &object, const std::vector<BluetoothServiceClassInfo> &supportedProfiles);
 	void appendConnectedProfiles(pbnjson::JValue &object, const std::string deviceAddress);
-	void appendAvailableStatus(pbnjson::JValue &object);
 	void appendManufacturerData(pbnjson::JValue &object, const std::vector<uint8_t> manufacturerData);
 	void appendScanRecord(pbnjson::JValue &object, const std::vector<uint8_t> scanRecord);
 	void appendConnectedRoles(pbnjson::JValue &object, BluetoothDevice *device);

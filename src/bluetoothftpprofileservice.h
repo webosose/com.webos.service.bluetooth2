@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,8 +51,6 @@ public:
 	bool listDirectory(LSMessage &message);
 	bool pullFile(LSMessage &message);
 	bool pushFile(LSMessage &message);
-
-	static bool handleClientCanceled(LSHandle *handle, const char *uniqueToken, void *ctx);
 
 private:
 	class Transfer

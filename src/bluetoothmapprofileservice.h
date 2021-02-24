@@ -71,7 +71,6 @@ private:
 	bool isPushMessageSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	bool isGetMessageNotificationSchemaAvailable(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress);
 	void notifySubscribersAboutPropertiesChange(const std::string &adapterAddress, const std::string &sessionId, BluetoothMessageList &messageList);
-	void appendCurrentProperties(pbnjson::JValue &object);
 	std::string findSessionKey(const std::string &adapterAddress, const std::string &sessionId);
 	void messageNotificationEvent(const std::string &adapterAddress, const std::string &sessionId, BluetoothMessageList &properties);
 	void appendNotificationEvent(pbnjson::JValue &responseObject , BluetoothMessageList& messageList);

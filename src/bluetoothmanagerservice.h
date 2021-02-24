@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -95,12 +95,7 @@ public:
 	//Observer callbacks
 	void adaptersChanged();
 	void adapterKeepAliveStateChanged(bool enabled);
-
-	void leDeviceRemovedByScanId(uint32_t scanId, const std::string &address);
-	void leDevicePropertiesChangedByScanId(uint32_t scanId, const std::string &address, BluetoothPropertiesList properties);
-
 	void leConnectionRequest(const std::string &address, bool state);
-	void requestReset();
 
 	bool isDefaultAdapterAvailable() const;
 	BluetoothAdapter* getDefaultAdapter() const;
@@ -178,32 +173,16 @@ private:
 	void appendAvailableStatus(pbnjson::JValue &object);
 #endif
 
-	void notifySubscriberLeDevicesChanged();
-	void notifySubscriberLeDevicesChangedbyScanId(uint32_t scanId);
 	void notifySubscribersAboutStateChange();
 	void notifySubscribersAdvertisingChanged(std::string adapterAddress);
 	void notifySubscribersAdaptersChanged();
-
-	void handleDeviceStatePropertiesSet(BluetoothPropertiesList properties, BluetoothDevice *device, LS::Message &request, const std::string &adapterAddress, BluetoothError error);
-
 	void updateFromAdapterAddressForQueryAvailable(BluetoothAdapter *adapter, const BluetoothProperty &property);
 	void assignDefaultAdapter();
-
 	bool isServiceClassEnabled(const std::string& serviceClass);
-
 	void createProfiles();
-
-
 	bool notifyAdvertisingDropped(uint8_t advertiserId);
 	bool notifyAdvertisingDisabled(uint8_t advertiserId);
-
-	void postToClient(LSMessage *message, pbnjson::JValue &object);
-
 	bool setPairableState(const std::string &adapterAddress, bool value);
-	void cancelIncomingPairingSubscription(const std::string &adapterAddress);
-
-	bool pairCallback (BluetoothError error);
-	void cancelDiscoveryCallback(const std::string &adapterAddress, BluetoothDevice *device, BluetoothError error);
 
 	//BLE
 	bool configureAdvertisement(LSMessage &message);
