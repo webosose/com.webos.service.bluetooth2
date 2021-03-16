@@ -209,6 +209,16 @@ bool BluetoothProfileService::isDeviceConnected(const std::string &adapterAddres
 				convertToLower(address)) != (connectedDevicesiter->second).end());
 }
 
+bool BluetoothProfileService::isDeviceMarkedForLocalDisconnect(const std::string &adapterAddress, const std::string &address)
+{
+	auto disconnectedDevicesiter = mLocalDisconnectingDevicesForMultipleAdapters.find(convertToLower(adapterAddress));
+	if (disconnectedDevicesiter == mLocalDisconnectingDevicesForMultipleAdapters.end())
+		return false;
+
+	return (std::find((disconnectedDevicesiter->second).begin(), (disconnectedDevicesiter->second).end(),
+				convertToLower(address)) != (disconnectedDevicesiter->second).end());
+}
+
 void BluetoothProfileService::markDeviceAsConnected(const std::string &address)
 {
 	if (isDeviceConnected(address))
@@ -256,6 +266,40 @@ void BluetoothProfileService::markDeviceAsNotConnected(const std::string &adapte
 		return;
 
 	(connectedDevicesiter->second).erase(deviceIter);
+}
+
+void BluetoothProfileService::markDeviceAsLocalDisconnecting(const std::string &adapterAddress, const std::string &address)
+{
+	auto disconnectingDevicesiter = mLocalDisconnectingDevicesForMultipleAdapters.find(convertToLower(adapterAddress));
+	if (disconnectingDevicesiter == mLocalDisconnectingDevicesForMultipleAdapters.end())
+	{
+		std::vector<std::string> disconnectingDevices;
+		disconnectingDevices.push_back(convertToLower(address));
+
+		mLocalDisconnectingDevicesForMultipleAdapters.insert(std::pair<std::string, std::vector<std::string>>
+				(convertToLower(adapterAddress), disconnectingDevices));
+		return;
+	}
+
+	if (!isDeviceMarkedForLocalDisconnect(adapterAddress, address))
+		(disconnectingDevicesiter->second).push_back(convertToLower(address));
+}
+
+void BluetoothProfileService::removeDeviceFromLocalDisconnecting(const std::string &adapterAddress, const std::string &address)
+{
+	auto disconnectingDevicesiter = mLocalDisconnectingDevicesForMultipleAdapters.find(convertToLower(adapterAddress));
+	if (disconnectingDevicesiter == mLocalDisconnectingDevicesForMultipleAdapters.end())
+		return;
+
+	auto deviceIter = std::find((disconnectingDevicesiter->second).begin(), (disconnectingDevicesiter->second).end(), convertToLower(address));
+
+	if (deviceIter == (disconnectingDevicesiter->second).end())
+		return;
+
+	(disconnectingDevicesiter->second).erase(deviceIter);
+
+	if((disconnectingDevicesiter->second).empty())
+		mLocalDisconnectingDevicesForMultipleAdapters.erase(disconnectingDevicesiter);
 }
 
 void BluetoothProfileService::propertiesChanged(const std::string &address, BluetoothPropertiesList properties)
@@ -328,7 +372,11 @@ void BluetoothProfileService::propertiesChanged(const std::string &adapterAddres
 			// remove all subscription. Called method will just return when subscriptions
 			// are not available for the specified device.
 			if (!connected)
-				removeConnectWatchForDevice(convertToLower(adapterAddress), convertToLower(address), !connected);
+			{
+				bool localdisconnect = isDeviceMarkedForLocalDisconnect(convertToLower(adapterAddress), convertToLower(address));
+				removeConnectWatchForDevice(convertToLower(adapterAddress), convertToLower(address), !connected , !localdisconnect);
+				removeDeviceFromLocalDisconnecting(convertToLower(adapterAddress), convertToLower(address));
+			}
 
 			break;
 		default:
@@ -685,6 +733,7 @@ void BluetoothProfileService::disconnectToStack(LS::Message &request, pbnjson::J
 		responseObj.put("address", address);
 		LSUtils::postToClient(request, responseObj);
 
+		removeDeviceFromLocalDisconnecting(convertToLower(adapterAddress), convertToLower(address));
 		removeConnectWatchForDevice(adapterAddress, address, true, false);
 		markDeviceAsNotConnected(adapterAddress, address);
 		markDeviceAsNotConnecting(adapterAddress, address);
@@ -692,6 +741,7 @@ void BluetoothProfileService::disconnectToStack(LS::Message &request, pbnjson::J
 	};
 
 	BT_INFO("PROFILE", 0, "Service calls SIL API : disconnect to %s", address.c_str());
+	markDeviceAsLocalDisconnecting(adapterAddress, address);
 	impl->disconnect(address, disconnectCallback);
 }
 

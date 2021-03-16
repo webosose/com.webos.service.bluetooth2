@@ -65,6 +65,7 @@ public:
 	bool isDeviceConnected(const std::string &adapterAddress, const std::string &address);
 	bool isDeviceConnecting(const std::string &address);
 	bool isDeviceConnecting(const std::string &adapterAddress, const std::string &address);
+	bool isDeviceMarkedForLocalDisconnect(const std::string &adapterAddress, const std::string &address);
 
 public:
 	virtual bool connect(LSMessage &message);
@@ -113,6 +114,8 @@ protected:
 	void markDeviceAsConnecting(const std::string &adapterAddress, const std::string &address);
 	void markDeviceAsNotConnecting(const std::string &address);
 	void markDeviceAsNotConnecting(const std::string &adapterAddress, const std::string &address);
+	void markDeviceAsLocalDisconnecting(const std::string &adapterAddress, const std::string &address);
+	void removeDeviceFromLocalDisconnecting(const std::string &adapterAddress, const std::string &address);
 	void handleConnectClientDisappeared(const std::string &adapterAddress, const std::string &address);
 
 	BluetoothProfile* findImpl (const std::string &adapterAddress);
@@ -130,6 +133,7 @@ private:
 
 	std::map<std::string, std::vector<std::string>> mConnectedDevicesForMultipleAdapters;
 	std::map<std::string, std::vector<std::string>> mConnectingDevicesForMultipleAdapters;
+	std::map<std::string, std::vector<std::string>> mLocalDisconnectingDevicesForMultipleAdapters;
 };
 
 #endif
