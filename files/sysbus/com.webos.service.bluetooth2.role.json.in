@@ -6,7 +6,7 @@
     "permissions": [
         {
             "service":"com.webos.service.bluetooth2",
-            "outbound":["com.webos.service.sessionmanager", "com.webos.service.pdm"]
+            "outbound":["com.webos.service.pdm", "com.webos.service.account"]
         }
     ]
 }

@@ -19,6 +19,12 @@ void LSUtils::postToClient(LS::Message &message, pbnjson::JValue &object)
 }
 
 #ifdef MULTI_SESSION_SUPPORT
+
+#include <map>
+#include <string>
+
+std::map<std::string, std::string> sessionInfoMap;
+
 LSUtils::DisplaySetId LSUtils::getDisplaySetIdIndex(LSMessage &message, LS::Handle *handle)
 {
 	if (LSMessageGetSessionId(&message) != NULL)
@@ -35,18 +41,30 @@ LSUtils::DisplaySetId LSUtils::getDisplaySetIdIndex(LSMessage &message, LS::Hand
 		std::string payloadstr;
 		serializer.toString(payload, pbnjson::JSchema::AllSchema(), payloadstr);
 
-		auto reply = handle->callOneReply("luna://com.webos.service.sessionmanager/getSessionInfo", payloadstr.c_str()).get();
-		pbnjson::JValue replyObj = pbnjson::Object();
-		LSUtils::parsePayload(reply.getPayload(), replyObj);
+		auto it = sessionInfoMap.find(sessionId);
+		std::string deviceSetId;
+		if( it == sessionInfoMap.end())
+		{
+			auto reply = handle->callOneReply("luna://com.webos.service.account/getSession", payloadstr.c_str()).get();
+			pbnjson::JValue replyObj = pbnjson::Object();
+			LSUtils::parsePayload(reply.getPayload(), replyObj);
 
-		bool returnValue = replyObj["returnValue"].asBool();
-		if (!returnValue) {
-			return HOST;
+			bool returnValue = replyObj["returnValue"].asBool();
+			if (!returnValue) {
+				return HOST;
+			}
+
+			auto sessionInfo = replyObj["session"];
+			auto deviceInfo = sessionInfo["deviceSetInfo"];
+			deviceSetId = deviceInfo["deviceSetId"].asString();
+
+			sessionInfoMap[sessionId] = deviceSetId;
+
 		}
-
-		auto sessionInfo = replyObj["sessionInfo"];
-		auto deviceInfo = sessionInfo["deviceSetInfo"];
-		auto deviceSetId = deviceInfo["deviceSetId"].asString();
+		else
+		{
+			deviceSetId = it->second;
+		}
 
 		BT_INFO("INFO_SESSION", 0, "deviceSetId %s", deviceSetId.c_str());
 
