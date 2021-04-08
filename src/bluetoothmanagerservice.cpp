@@ -39,6 +39,7 @@
 #include "bluetoothpanprofileservice.h"
 #include "bluetoothmapprofileservice.h"
 #include "bluetoothhidprofileservice.h"
+#include "bluetoothmeshprofileservice.h"
 #include "bluetoothgattancsprofile.h"
 #include "bluetoothmanageradapter.h"
 #include "ls2utils.h"
@@ -503,6 +504,11 @@ void BluetoothManagerService::createProfiles()
 
 	if (isServiceClassEnabled("MAP"))
 		mProfiles.push_back(new BluetoothMapProfileService(this));
+	if (isServiceClassEnabled("MESH"))
+	{
+			BT_INFO("MANAGER_SERVICE", 0, "Mesh profile service created : [%s : %d]", __FUNCTION__, __LINE__);
+			mProfiles.push_back(new BluetoothMeshProfileService(this));
+	}
 }
 
 void BluetoothManagerService::notifySubscribersAboutStateChange()

@@ -115,6 +115,7 @@ const std::unordered_map<std::string, BluetoothServiceClassInfo> allServiceClass
 	{ "00001132-0000-1000-8000-00805f9b34fb", { "MAS", "/map" } },
 	{ "00001133-0000-1000-8000-00805f9b34fb", { "MNS", "/map" } },
 	{ "00001134-0000-1000-8000-00805f9b34fb", { "MAP", "/map" } },
+	{ "00001827-0000-1000-8000-00805f9b34fb", { "MESH", "/mesh"} }
 };
 
 #endif // BLUETOOTHPROFILES_H

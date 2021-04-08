@@ -1,3 +1,3 @@
 {
-    "com.webos.service.bluetooth2": ["physicaldevice.query", "account.query"]
+    "com.webos.service.bluetooth2": ["session.management", "physicaldevice.query"]
 }

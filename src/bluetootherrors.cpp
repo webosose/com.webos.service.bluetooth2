@@ -48,7 +48,17 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_AVRCP_ITEM_NOT_PLAYABLE, "Item is not playable"},
 	{BLUETOOTH_ERROR_AVRCP_NOT_A_FOLDER, "Item is not a folder"},
 	{BLUETOOTH_ERROR_MAP_FOLDER_NOT_FOUND, "Requested folder is not found"},
-	{BLUETOOTH_ERROR_MAP_MESSAGE_HANDLE_NOT_FOUND, "Requested message handle is not found"}
+	{BLUETOOTH_ERROR_MAP_MESSAGE_HANDLE_NOT_FOUND, "Requested message handle is not found"},
+	{BLUETOOTH_ERROR_MESH_NET_INDEX_DOES_NOT_EXIST, "netIndex does not exist"},
+	{BLUETOOTH_ERROR_MESH_APP_INDEX_ALREADY_EXISTS, "appIndex aleady exists"},
+	{BLUETOOTH_ERROR_MESH_APP_INDEX_DOES_NOT_EXIST, "appIndex does not exist"},
+	{BLUETOOTH_ERROR_MESH_NO_RESPONSE, "No response from remote node"},
+	{BLUETOOTH_ERROR_MESH_BAD_PDU, "Bad PDU"},
+	{BLUETOOTH_ERROR_MESH_PROV_CONFIRMATION_FAILED, "Provision confirmation failed"},
+	{BLUETOOTH_ERROR_MESH_CANNOT_ASSIGN_ADDRESS, "Cannot assign address"},
+	{BLUETOOTH_ERROR_MESH_DEVICE_NOT_FOUND, "Device not found"},
+	{BLUETOOTH_ERROR_MESH_NODE_NOT_AVAILABLE, "Node not available"},
+	{BLUETOOTH_ERROR_MESH_INVALID_DEST_ADDRESS, "Invalid destination address"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -258,8 +268,26 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MAP_STATUS_INDICATOR_PARAM_MISSING,"Required 'statusIndicator' parameter is not supplied"},
 	{BT_ERR_MAP_STATUS_VALUE_PARAM_MISSING, "Required 'statusValue' parameter is not supplied"},
 	{BT_ERR_MAP_HANDLE_PARAM_MISSING, "Required 'handle' parameter is not supplied"},
-	{BT_ERR_AVRCP_PLAYBACK_STATUS_PARAM_MISSING, "Required 'playbackStatus' parameter is not supplied"}
-
+	{BT_ERR_AVRCP_PLAYBACK_STATUS_PARAM_MISSING, "Required 'playbackStatus' parameter is not supplied"},
+	{BT_ERR_MESH_NETINDEX_PARAM_MISSING, "Required 'netIndex' parameter is missing"},
+	{BT_ERR_MESH_APPINDEX_PARAM_MISSING, "Required 'appIndex' parameter missing"},
+	{BT_ERR_MESH_DEST_ADDRESS_PARAM_MISSING, "Required 'destAddress' parameter missing"},
+	{BT_ERR_MESH_SRC_ADDRESS_PARAM_MISSING, "Required 'srcAddress' parameter missing"},
+	{BT_ERR_MESH_BEARER_PARAM_MISSING, "Required 'bearer' parameter missing"},
+	{BT_ERR_MESH_UUID_PARAM_MISSING, "Required 'uuid' parameter missing"},
+	{BT_ERR_MESH_DATA_PARAM_MISSING, "Required 'data' parameter missing"},
+	{BT_ERR_MESH_MODELID_PARAM_MISSING, "Requied 'modelId' paramerer missing"},
+	{BT_ERR_MESH_TTL_PARAM_MISSING, "Required 'ttl' prameter missing"},
+	{BT_ERR_MESH_GATT_PROXY_STATE_PARAM_MISSING, "Required 'gattProxyState' parameter missing"},
+	{BT_ERR_MESH_HB_PUB_STATUS_PARAM_MISSING, "Required 'hbPubStatus' parameter missing"},
+	{BT_ERR_MESH_PUB_STATUS_PARAM_MISSING, "Required 'pubStatus' parameter missing"},
+	{BT_ERR_MESH_NODE_IDENTITY_PARAM_MISSING, "Required 'nodeIdentity' parameter missing"},
+	{BT_ERR_MESH_RELAY_STATUS_PARAM_MISSING, "Required 'relayStatus' parameter missing"},
+	{BT_ERR_MESH_NUMBER_PARAM_MISSING, "Required 'number' parameter missing"},
+	{BT_ERR_MESH_OOB_DATA_PARAM_MISSING, "Required 'oobData' parameter missing"},
+	{BT_ERR_MESH_ONOFF_PARAM_MISSING, "Required 'onoff' parameter missing"},
+	{BT_ERR_MESH_ADAPTER_NOT_AUTHORIZED, "Requested adapter address Not authorized to perform the action"},
+	{BT_ERR_MESH_NETWORK_NOT_CREATED, "Mesh network is not created"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
