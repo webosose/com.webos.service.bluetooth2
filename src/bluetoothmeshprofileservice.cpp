@@ -29,6 +29,7 @@ BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, scanUnprovisionedDevices)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, unprovisionedScanCancel)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/mesh", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -282,5 +283,56 @@ pbnjson::JValue BluetoothMeshProfileService::appendDevices(const std::string &ad
 	return platformObjArr;
 }
 
+bool BluetoothMeshProfileService::unprovisionedScanCancel(LSMessage &message)
+{
+	BT_INFO("MESH", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string),
+	PROP(bearer, string)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+	return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV"; // default value
+
+	if (requestObj.hasKey("bearer"))
+		bearer = requestObj["bearer"].asString();
+
+	BluetoothError error = impl->unprovisionedScanCancel(bearer);
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
+
+	return true;
+}
 
 

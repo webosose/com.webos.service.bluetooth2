@@ -63,6 +63,7 @@ public:
 
 	/* Mesh APIs */
 	bool scanUnprovisionedDevices(LSMessage &message);
+	bool unprovisionedScanCancel(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");

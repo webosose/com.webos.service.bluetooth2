@@ -75,7 +75,8 @@
         "com.webos.service.bluetooth2/hfp/sendAT",
         "com.webos.service.bluetooth2/hfp/receiveResult",
         "com.webos.service.bluetooth2/device/setState",
-        "com.webos.service.bluetooth2/mesh/scanUnprovisionedDevices"
+        "com.webos.service.bluetooth2/mesh/scanUnprovisionedDevices",
+        "com.webos.service.bluetooth2/mesh/unprovisionedScanCancel"
     ],
     "bluetooth.management": [
         "com.webos.service.bluetooth2/a2dp/disconnect",
