@@ -33,6 +33,9 @@ mNetworkCreated(0)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, scanUnprovisionedDevices)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, unprovisionedScanCancel)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, createNetwork)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, provision)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningOob)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningNumeric)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/mesh", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
@@ -128,7 +131,7 @@ bool BluetoothMeshProfileService::scanUnprovisionedDevices(LSMessage &message)
 	int parseError = 0;
 
 	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(adapterAddress, string),
-	PROP(bearer, string),PROP(scanTimeout, integer), PROP(subscribe, boolean)) REQUIRED_1( subscribe));
+	PROP(bearer, string), PROP(scanTimeout, integer), PROP(subscribe, boolean)) REQUIRED_1( subscribe));
 
 	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
 	{
@@ -370,6 +373,12 @@ bool BluetoothMeshProfileService::createNetwork(LSMessage &message)
 		return true;
 	}
 
+	if (isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_NETWORK_EXISTS);
+		return true;
+	}
+
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 	return true;
@@ -420,6 +429,275 @@ void BluetoothMeshProfileService::updateNetworkId(const std::string &adapterAddr
 			BT_INFO("MESH", 0, "networkId : [%s : %llu]", __FUNCTION__, networkId);
 			std::string networkID = std::to_string(networkId);
 			object.put("networkId", networkID);
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+}
+
+bool BluetoothMeshProfileService::provision(LSMessage &message)
+{
+	BT_INFO("MESH", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_5(PROP(adapterAddress, string), PROP(timeout, integer),
+													 PROP(bearer, string), PROP(uuid, string),
+													 PROP_WITH_VAL_1(subscribe, boolean, true))
+												 REQUIRED_2(uuid, subscribe));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!request.isSubscription())
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
+		else if (!requestObj.hasKey("uuid"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_UUID_PARAM_MISSING);
+
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	/* Need not check if the method is subscribed. This method need to be
+     * subscribed, else schema check will return error
+     */
+	bool retVal = addClientWatch(request, &mProvResultWatch,
+								 adapterAddress, "");
+	if (!retVal)
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	uint16_t timeout = 60;
+
+	if (requestObj.hasKey("timeout"))
+	{
+		timeout = (uint16_t)requestObj["timeout"].asNumber<int32_t>();
+	}
+
+	BluetoothError error = impl->provision(bearer, requestObj["uuid"].asString(), timeout);
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+
+	responseObj.put("subscribed", true);
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+bool BluetoothMeshProfileService::supplyProvisioningOob(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string),
+													 PROP(bearer, string), PROP(oobData, string))
+												 REQUIRED_1(oobData));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	BluetoothError error = impl->supplyProvisioningOob(bearer,
+											  requestObj["oobData"].asString());
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+bool BluetoothMeshProfileService::supplyProvisioningNumeric(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string),
+													 PROP(bearer, string), PROP(number, integer))
+												 REQUIRED_1(number));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	BluetoothError error = impl->supplyProvisioningNumeric(bearer, requestObj["number"].asNumber<int32_t>());
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+void BluetoothMeshProfileService::provisionResult(BluetoothError error, const std::string &adapterAddress,
+								 const std::string &request,
+								 const std::string &stringToDisplay,
+								 const uint32_t numberToDisplay,
+								 const std::string &numberDisplayType,
+								 const std::string &promptType,
+								 uint16_t unicastAddress,
+								 const std::string &uuid)
+{
+	BT_INFO("MESH", 0, "[%s : %d], num_watch: %d", __FUNCTION__, __LINE__, mProvResultWatch.size());
+	for (auto watch : mProvResultWatch)
+	{
+		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		{
+			pbnjson::JValue object = pbnjson::Object();
+
+			object.put("subscribed", true);
+			object.put("returnValue", true);
+			object.put("adapterAddress", adapterAddress);
+			object.put("request", request);
+			 if (request == "promptNumeric")
+			{
+				object.put("promptType", promptType);
+			}
+			else if (request == "displayString")
+			{
+				object.put("stringToDisplay", stringToDisplay);
+			}
+			else if (request == "displayNumeric")
+			{
+				object.put("numberToDisplay", (int32_t)numberToDisplay);
+				object.put("numberDisplayType", numberDisplayType);
+			}
+			else if (request == "endProvision" )
+			{
+				if (BLUETOOTH_ERROR_NONE == error)
+				{
+					object.put("unicastAddress", unicastAddress);
+				}
+			}
+			if (BLUETOOTH_ERROR_NONE != error)
+			{
+				object.put("errorCode", error);
+				object.put("errorText", retrieveErrorCodeText(error));
+			}
+
+			LSMessage *message = watch->getMessage();
+			std::string payload = LSMessageGetPayload(message);
+			pbnjson::JValue replyObj = pbnjson::Object();
+
+			if (!LSUtils::parsePayload(LSMessageGetPayload(message), replyObj))
+			{
+				BT_ERROR("MESH", 0, "provision payload pasing error");
+			}
+
+			object.put("uuid", replyObj["uuid"].asString());
 			LSUtils::postToClient(watch->getMessage(), object);
 		}
 	}

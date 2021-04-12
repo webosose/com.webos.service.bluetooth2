@@ -58,7 +58,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_MESH_CANNOT_ASSIGN_ADDRESS, "Cannot assign address"},
 	{BLUETOOTH_ERROR_MESH_DEVICE_NOT_FOUND, "Device not found"},
 	{BLUETOOTH_ERROR_MESH_NODE_NOT_AVAILABLE, "Node not available"},
-	{BLUETOOTH_ERROR_MESH_INVALID_DEST_ADDRESS, "Invalid destination address"}
+	{BLUETOOTH_ERROR_MESH_INVALID_DEST_ADDRESS, "Invalid destination address"},
+	{BLUETOOTH_ERROR_MESH_NETWORK_EXISTS, "Mesh Network already exists"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =

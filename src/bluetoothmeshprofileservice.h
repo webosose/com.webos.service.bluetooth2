@@ -65,10 +65,22 @@ public:
 	bool scanUnprovisionedDevices(LSMessage &message);
 	bool unprovisionedScanCancel(LSMessage &message);
 	bool createNetwork(LSMessage &message);
+	bool provision(LSMessage &message);
+	bool supplyProvisioningOob(LSMessage &message);
+	bool supplyProvisioningNumeric(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
 	void updateNetworkId(const std::string &adapterAddress, const uint64_t networkId);
+	void provisionResult(BluetoothError error, const std::string &adapterAddress,
+								 const std::string &request = "",
+								 const std::string &stringToDisplay = "",
+								 const uint32_t numberToDisplay = 0,
+								 const std::string &numberDisplayType ="",
+								 const std::string &promptType = "",
+								 uint16_t unicastAddress = 0,
+								 const std::string &uuid = "");
+
 private:
 	/* Private helper methods */
 	bool addClientWatch(LS::Message &request,
@@ -95,6 +107,7 @@ private:
 	} UnprovisionedDeviceInfo;
 	std::list<BluetoothClientWatch *> mScanResultWatch;
 	std::list<BluetoothClientWatch *> mNetworkIdWatch;
+	std::list<BluetoothClientWatch *> mProvResultWatch;
 	/* map<adapterAddress, map<uuid, UnprovisionedDeviceInfo>> */
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
 

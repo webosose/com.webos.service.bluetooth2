@@ -77,7 +77,10 @@
         "com.webos.service.bluetooth2/device/setState",
         "com.webos.service.bluetooth2/mesh/scanUnprovisionedDevices",
         "com.webos.service.bluetooth2/mesh/unprovisionedScanCancel",
-        "com.webos.service.bluetooth2/mesh/createNetwork"
+        "com.webos.service.bluetooth2/mesh/createNetwork",
+        "com.webos.service.bluetooth2/mesh/provision",
+        "com.webos.service.bluetooth2/mesh/supplyProvisioningOob",
+        "com.webos.service.bluetooth2/mesh/supplyProvisioningNumeric"
     ],
     "bluetooth.management": [
         "com.webos.service.bluetooth2/a2dp/disconnect",
