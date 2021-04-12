@@ -64,10 +64,11 @@ public:
 	/* Mesh APIs */
 	bool scanUnprovisionedDevices(LSMessage &message);
 	bool unprovisionedScanCancel(LSMessage &message);
+	bool createNetwork(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
-
+	void updateNetworkId(const std::string &adapterAddress, const uint64_t networkId);
 private:
 	/* Private helper methods */
 	bool addClientWatch(LS::Message &request,
@@ -81,6 +82,7 @@ private:
 	pbnjson::JValue appendDevice(const int16_t rssi, const std::string &uuid, const std::string &name);
 	pbnjson::JValue appendDevices(const std::string &adapterAddress);
 	bool isScanDevicePresent(const std::string &adapterAddress, const std::string &uuid);
+	bool isNetworkCreated() const { return mNetworkCreated; }
 
 private:
 	typedef struct device
@@ -92,8 +94,11 @@ private:
 		std::string name;
 	} UnprovisionedDeviceInfo;
 	std::list<BluetoothClientWatch *> mScanResultWatch;
+	std::list<BluetoothClientWatch *> mNetworkIdWatch;
 	/* map<adapterAddress, map<uuid, UnprovisionedDeviceInfo>> */
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
+
+	bool mNetworkCreated;
 };
 
 #endif //BLUETOOTHMESHPROFILESERVICE_H
