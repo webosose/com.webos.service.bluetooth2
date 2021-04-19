@@ -2281,6 +2281,9 @@ bool BluetoothManagerService::notifyAdvertisingDropped(uint8_t advertiserId)
 
 	std::string adapterAddress = mAdvIdAdapterMap[advertiserId];
 
+	if (adapterAddress.empty())
+		return true;
+
 	auto leAdvEnableCallback = [this, advertiserId, adapterAddress](BluetoothError enableError)
 	{
 		auto unregisterAdvCallback = [this,adapterAddress, advertiserId](BluetoothError registerError)
