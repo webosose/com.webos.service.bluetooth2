@@ -94,3 +94,60 @@ LSUtils::DisplaySetId LSUtils::getDisplaySetIdIndex(const std::string &deviceSet
 	return HOST;
 }
 #endif
+
+bool LSUtils::callDb8MeshFindToken(LS::Handle *serviceHandle, std::string &token)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/find",
+											"{\"query\":{ \"from\":\"com.webos.service.bluetooth2.meshtoken:1\"}}").get();
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		BT_INFO("MESH", 0, "Db8 find API returned error: %d==%s : [%s : %d]",
+			replyObj["errorCode"].asNumber<int32_t>(), replyObj["errorText"].asString().c_str(),
+			__FUNCTION__, __LINE__);
+		return false;
+	}
+
+	BT_DEBUG("MESH", 0, "replyObj: %s", replyObj.stringify().c_str());
+	pbnjson::JValue resultsObj = pbnjson::Array();
+	pbnjson::JValue results = replyObj["results"];
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		pbnjson::JValue meshEntry = results[0];
+		token = meshEntry["meshToken"].asString();
+		BT_DEBUG("MESH", 0, "token received from db: %s", token.c_str());
+		return true;
+	}
+	return false;
+}
+
+bool LSUtils::callDb8MeshSetToken(LS::Handle *serviceHandle, std::string &token)
+{
+	pbnjson::JValue objArray = pbnjson::Array();
+	pbnjson::JValue tokenObj = pbnjson::Object();
+	pbnjson::JValue reqObj = pbnjson::Object();
+
+	tokenObj.put("_kind", "com.webos.service.bluetooth2.meshtoken:1");
+	tokenObj.put("meshToken", token);
+	objArray.append(tokenObj);
+	reqObj.put("objects", objArray);
+
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/put",
+											reqObj.stringify().c_str()).get();
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		return false;
+	}
+	return true;
+}
+

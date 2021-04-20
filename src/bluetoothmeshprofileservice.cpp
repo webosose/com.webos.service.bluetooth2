@@ -25,7 +25,7 @@
 #include "utils.h"
 #include "bluetoothclientwatch.h"
 
-BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService *manager) : 
+BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService *manager) :
 BluetoothProfileService(manager, "MESH", "00001827-0000-1000-8000-00805f9b34fb"),
 mNetworkCreated(0)
 {
@@ -40,7 +40,6 @@ mNetworkCreated(0)
 
 	manager->registerCategory("/mesh", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/mesh", this);
-
 }
 
 BluetoothMeshProfileService::~BluetoothMeshProfileService()
@@ -386,12 +385,6 @@ bool BluetoothMeshProfileService::createNetwork(LSMessage &message)
 		return true;
 	}
 
-	if (isNetworkCreated())
-	{
-		LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_NETWORK_EXISTS);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 	return true;
@@ -403,6 +396,23 @@ bool BluetoothMeshProfileService::createNetwork(LSMessage &message)
 		return true;
 	}
 
+	if (isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_NETWORK_EXISTS);
+		return true;
+	}
+
+	std::string meshToken;
+	bool networkTokenExists = LSUtils::callDb8MeshFindToken(getManager(), meshToken);
+	if (networkTokenExists)
+	{
+		BT_INFO("MESH", 0, "network already exists, token : %s: [%s : %d]", meshToken.c_str(),
+				 __FUNCTION__, __LINE__);
+		mNetworkCreated = true;
+		impl->attach("PB-ADV", meshToken);
+		LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_NETWORK_EXISTS);
+		return true;
+	}
 	bool retVal = addClientWatch(request, &mNetworkIdWatch,
 															adapterAddress, "");
 	if (!retVal)
@@ -442,7 +452,17 @@ void BluetoothMeshProfileService::updateNetworkId(const std::string &adapterAddr
 			BT_INFO("MESH", 0, "networkId : [%s : %llu]", __FUNCTION__, networkId);
 			std::string networkID = std::to_string(networkId);
 			object.put("networkId", networkID);
+			if (!LSUtils::callDb8MeshSetToken(getManager(), networkID))
+			{
+				BT_ERROR("MESH", 0, "Db8 set mesh token failed");
+			}
+			else
+			{
+				BT_DEBUG("MESH", 0, "Db8 set mesh token success");
+			}
 			LSUtils::postToClient(watch->getMessage(), object);
+
+
 		}
 	}
 }

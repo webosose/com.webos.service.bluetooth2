@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2020 LG Electronics, Inc.
+# Copyright (c) 2014-2021 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,4 +88,5 @@ target_link_libraries(webos-bluetooth-service
 
 webos_build_daemon()
 webos_build_system_bus_files()
+webos_build_db8_files()
 webos_build_configured_file(files/conf/pmlog/webos-bluetooth-service.conf SYSCONFDIR pmlog.d)

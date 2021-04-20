@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -218,6 +218,11 @@ enum DisplaySetId
 DisplaySetId getDisplaySetIdIndex(LSMessage &message, LS::Handle *handle);
 DisplaySetId getDisplaySetIdIndex(const std::string &deviceSetId);
 #endif
+
+bool callDb8MeshFindToken(LS::Handle *serviceHandle, std::string &token);
+bool callDb8MeshSetToken(LS::Handle *serviceHandle, std::string &token);
+bool callDb8MeshPutAppKey(uint16_t appKeyInex, const std::string &appName);
+bool callDb8MeshGetAppKeys(pbnjson::JValue &result);
 
 } // namespace LSUtils
 
