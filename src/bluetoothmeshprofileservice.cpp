@@ -211,8 +211,7 @@ void BluetoothMeshProfileService::scanResult(const std::string &adapterAddress,
 		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
 		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
 		{
-			if(isScanDevicePresent(adapterAddress, uuid))
-				continue;
+			updateDeviceList(adapterAddress, rssi, uuid, name);
 			pbnjson::JValue object = pbnjson::Object();
 			object.put("subscribed", true);
 			object.put("returnValue", true);
@@ -220,7 +219,6 @@ void BluetoothMeshProfileService::scanResult(const std::string &adapterAddress,
 			object.put("device", appendDevice(rssi, uuid, name));
 			object.put("devices", appendDevices(adapterAddress));
 			LSUtils::postToClient(watch->getMessage(), object);
-			updateDeviceList(adapterAddress, rssi, uuid, name);
 		}
 	}
 }
@@ -243,11 +241,10 @@ bool BluetoothMeshProfileService::updateDeviceList(const std::string &adapterAdd
 {
 
 	auto it = mUnprovisionedDevices.find(adapterAddress);
-
+	UnprovisionedDeviceInfo deviceInfo(rssi, uuid, name);
 
 	if (mUnprovisionedDevices.end() == it)
 	{
-		UnprovisionedDeviceInfo deviceInfo(rssi, uuid, name);
 		std::map<std::string, UnprovisionedDeviceInfo> device;
 		device.insert(std::pair<std::string, UnprovisionedDeviceInfo>(uuid, deviceInfo));
 		mUnprovisionedDevices.insert(std::pair<std::string, std::map<std::string, UnprovisionedDeviceInfo>>(adapterAddress, device));
@@ -255,10 +252,25 @@ bool BluetoothMeshProfileService::updateDeviceList(const std::string &adapterAdd
 	else
 	{
 		auto devices = (it->second).find(uuid);
-		if ((it->second).end() == devices)
+		if ((it->second).end() != devices)
 		{
-			UnprovisionedDeviceInfo deviceInfo(rssi, uuid, name);
-			(it->second).insert(std::pair<std::string, UnprovisionedDeviceInfo>(uuid, deviceInfo));
+			(it->second).erase(uuid);
+		}
+		(it->second).insert(std::pair<std::string, UnprovisionedDeviceInfo>(uuid, deviceInfo));
+	}
+	return true;
+}
+
+bool BluetoothMeshProfileService::removeFromDeviceList(const std::string &adapterAddress, const std::string &uuid)
+{
+	auto it = mUnprovisionedDevices.find(adapterAddress);
+
+	if (mUnprovisionedDevices.end() != it)
+	{
+		auto devices = (it->second).find(uuid);
+		if ((it->second).end() != devices)
+		{
+			(it->second).erase(uuid);
 		}
 	}
 	return true;
@@ -294,6 +306,7 @@ pbnjson::JValue BluetoothMeshProfileService::appendDevices(const std::string &ad
 
 	return platformObjArr;
 }
+
 
 bool BluetoothMeshProfileService::unprovisionedScanCancel(LSMessage &message)
 {
@@ -656,6 +669,16 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
 		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
 		{
+			LSMessage *message = watch->getMessage();
+			std::string payload = LSMessageGetPayload(message);
+			pbnjson::JValue replyObj = pbnjson::Object();
+
+			if (!LSUtils::parsePayload(LSMessageGetPayload(message), replyObj))
+			{
+				BT_ERROR("MESH", 0, "provision payload pasing error");
+			}
+			std::string deviceUUID = replyObj["uuid"].asString();
+
 			pbnjson::JValue object = pbnjson::Object();
 
 			object.put("subscribed", true);
@@ -680,6 +703,7 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 				if (BLUETOOTH_ERROR_NONE == error)
 				{
 					object.put("unicastAddress", unicastAddress);
+					removeFromDeviceList(adapterAddress, deviceUUID);
 				}
 			}
 			if (BLUETOOTH_ERROR_NONE != error)
@@ -687,17 +711,7 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 				object.put("errorCode", error);
 				object.put("errorText", retrieveErrorCodeText(error));
 			}
-
-			LSMessage *message = watch->getMessage();
-			std::string payload = LSMessageGetPayload(message);
-			pbnjson::JValue replyObj = pbnjson::Object();
-
-			if (!LSUtils::parsePayload(LSMessageGetPayload(message), replyObj))
-			{
-				BT_ERROR("MESH", 0, "provision payload pasing error");
-			}
-
-			object.put("uuid", replyObj["uuid"].asString());
+			object.put("uuid", deviceUUID);
 			LSUtils::postToClient(watch->getMessage(), object);
 		}
 	}

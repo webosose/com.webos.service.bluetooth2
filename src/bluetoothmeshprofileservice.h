@@ -95,6 +95,7 @@ private:
 	pbnjson::JValue appendDevices(const std::string &adapterAddress);
 	bool isScanDevicePresent(const std::string &adapterAddress, const std::string &uuid);
 	bool isNetworkCreated() const { return mNetworkCreated; }
+	bool removeFromDeviceList(const std::string &adapterAddress, const std::string &uuid);
 
 private:
 	typedef struct device
