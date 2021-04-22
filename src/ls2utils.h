@@ -221,8 +221,9 @@ DisplaySetId getDisplaySetIdIndex(const std::string &deviceSetId);
 
 bool callDb8MeshFindToken(LS::Handle *serviceHandle, std::string &token);
 bool callDb8MeshSetToken(LS::Handle *serviceHandle, std::string &token);
-bool callDb8MeshPutAppKey(uint16_t appKeyInex, const std::string &appName);
-bool callDb8MeshGetAppKeys(pbnjson::JValue &result);
+bool callDb8MeshPutAppKey(LS::Handle *serviceHandle, uint16_t appKeyInex,
+							const std::string &appName);
+bool callDb8MeshGetAppKeys(LS::Handle *serviceHandle, pbnjson::JValue &result);
 
 } // namespace LSUtils
 

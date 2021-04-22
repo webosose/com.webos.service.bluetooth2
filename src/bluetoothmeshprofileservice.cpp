@@ -27,7 +27,8 @@
 
 BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService *manager) :
 BluetoothProfileService(manager, "MESH", "00001827-0000-1000-8000-00805f9b34fb"),
-mNetworkCreated(0)
+mNetworkCreated(0),
+mAppKeyIndex(0)
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, scanUnprovisionedDevices)
@@ -36,10 +37,12 @@ mNetworkCreated(0)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, provision)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningOob)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningNumeric)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, createAppKey)
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/mesh", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/mesh", this);
+
 }
 
 BluetoothMeshProfileService::~BluetoothMeshProfileService()
@@ -64,6 +67,53 @@ void BluetoothMeshProfileService::initialize(const std::string &adapterAddress)
 	{
 		getImpl<BluetoothMeshProfile>(adapterAddress)->registerObserver(this);
 	}
+
+	pbnjson::JValue result;
+	LSUtils::callDb8MeshGetAppKeys(getManager(), result);
+	pbnjson::JValue results = result["results"];
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue meshEntry = results[i];
+			if (meshEntry.hasKey("appKey"))
+			{
+				uint16_t appKeyIndex = (uint16_t)meshEntry["appKey"].asNumber<int32_t>();
+				std::string appName = meshEntry["appName"].asString();
+				BT_DEBUG("MESH", 0, "appkey: %d, appname: %s", appKeyIndex, appName.c_str());
+				mAppKeys.insert(std::pair<uint16_t, std::string>(appKeyIndex, appName));
+			}
+		}
+
+		/* Keep the app key index to next available index */
+		while (isAppKeyExist(mAppKeyIndex))
+		{
+			mAppKeyIndex++;
+		}
+	}
+}
+
+bool BluetoothMeshProfileService::isValidApplication(uint16_t appKeyIndex, LS::Message &request)
+{
+	const char *senderName = LSMessageGetApplicationID(request.get());
+	if (senderName == NULL)
+	{
+		senderName = LSMessageGetSenderServiceName(request.get());
+		if (senderName == NULL)
+		{
+			return false;
+		}
+	}
+
+	/* If app index exists and the sender name is same as the stored app name, then
+	 * valid application
+	 */
+	auto appIter = mAppKeys.find(appKeyIndex);
+	if (appIter != mAppKeys.end() && appIter->second == senderName)
+	{
+		return true;
+	}
+	return false;
 }
 
 bool BluetoothMeshProfileService::addClientWatch(LS::Message &request, std::list<BluetoothClientWatch *> *clientWatch,
@@ -735,4 +785,101 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 			LSUtils::postToClient(watch->getMessage(), object);
 		}
 	}
+}
+
+bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(adapterAddress, string),
+													 PROP(bearer, string), PROP(netKeyIndex, integer),
+													 PROP(appKeyIndex, integer)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	const char *senderName = LSMessageGetApplicationID(request.get());
+	if (senderName == NULL)
+	{
+		senderName = LSMessageGetSenderServiceName(request.get());
+		if (senderName == NULL)
+		{
+			return false;
+		}
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+	uint16_t netKeyIndex = 0;
+	uint16_t appKeyIndex = mAppKeyIndex++;
+	if (requestObj.hasKey("netKeyIndex"))
+	{
+		netKeyIndex = (uint16_t)requestObj["netKeyIndex"].asNumber<int32_t>();
+	}
+	/* If appkey index is passed, then we use that. If it is not passed then we use
+	 * from the pool and increment the index so that new index is available in the pool
+	 * for next time
+	 */
+	if (requestObj.hasKey("appKeyIndex"))
+	{
+		appKeyIndex = (uint16_t)requestObj["appKeyIndex"].asNumber<int32_t>();
+		if (isAppKeyExist(appKeyIndex))
+		{
+			BT_INFO("MESH", 0, "AppKey already exist, choose another key");
+			LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_APP_INDEX_ALREADY_EXISTS);
+			return true;
+		}
+	}
+	else
+	{
+		/* Increment until a non existing index. */
+		while (isAppKeyExist(mAppKeyIndex))
+		{
+			mAppKeyIndex++;
+		}
+		BT_INFO("MESH", 0, "Next available appkeyindex: %d", mAppKeyIndex);
+	}
+	BluetoothError error = impl->createAppKey(requestObj["bearer"].asString(),
+											  netKeyIndex, appKeyIndex);
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+	if (!LSUtils::callDb8MeshPutAppKey(getManager(), appKeyIndex, senderName))
+	{
+		BT_INFO("MESH", 0, "Db8 put appkey failed");
+	}
+	mAppKeys.insert(std::pair<uint16_t, std::string>(appKeyIndex, senderName));
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("netKeyIndex", netKeyIndex);
+	responseObj.put("appKeyIndex", appKeyIndex);
+
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+bool BluetoothMeshProfileService::isAppKeyExist(uint16_t appKeyIndex)
+{
+	return (mAppKeys.find(appKeyIndex) != mAppKeys.end());
 }

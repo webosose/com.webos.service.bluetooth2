@@ -118,9 +118,17 @@ bool LSUtils::callDb8MeshFindToken(LS::Handle *serviceHandle, std::string &token
 	pbnjson::JValue results = replyObj["results"];
 	if (results.isValid() && (results.arraySize() > 0))
 	{
-		pbnjson::JValue meshEntry = results[0];
-		token = meshEntry["meshToken"].asString();
-		BT_DEBUG("MESH", 0, "token received from db: %s", token.c_str());
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			if (results[i].hasKey("meshToken"))
+			{
+				pbnjson::JValue meshEntry = results[i];
+				token = meshEntry["meshToken"].asString();
+				break;
+			}
+		}
+
+		BT_INFO("MESH", 0, "token received from db: %s", token.c_str());
 		return true;
 	}
 	return false;
@@ -148,6 +156,49 @@ bool LSUtils::callDb8MeshSetToken(LS::Handle *serviceHandle, std::string &token)
 	{
 		return false;
 	}
+	return true;
+}
+
+bool LSUtils::callDb8MeshPutAppKey(LS::Handle *serviceHandle, uint16_t appKeyInex,
+									const std::string &appName)
+{
+	BT_INFO("MESH", 0, "appKeyInex: %d, appName: %s", appKeyInex, appName.c_str());
+
+	pbnjson::JValue objArray = pbnjson::Array();
+	pbnjson::JValue tokenObj = pbnjson::Object();
+	pbnjson::JValue reqObj = pbnjson::Object();
+
+	tokenObj.put("_kind", "com.webos.service.bluetooth2.meshappkey:1"); //kind for appkey:appname
+	tokenObj.put("appKey", appKeyInex);
+	tokenObj.put("appName", appName);
+	objArray.append(tokenObj);
+	reqObj.put("objects", objArray);
+
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/put",
+											reqObj.stringify().c_str()).get();
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		return false;
+	}
+	return true;
+}
+bool LSUtils::callDb8MeshGetAppKeys(LS::Handle *serviceHandle, pbnjson::JValue &result)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/find",
+											"{\"query\":{ \"from\":\"com.webos.service.bluetooth2.meshappkey:1\"}}").get();
+
+	BT_INFO("MESH", 0, "After API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	result = replyObj;
 	return true;
 }
 

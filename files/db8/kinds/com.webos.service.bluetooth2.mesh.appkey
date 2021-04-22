@@ -1,0 +1,7 @@
+{
+    "id": "com.webos.service.bluetooth2.meshappkey:1",
+    "owner": "com.webos.service.bluetooth2",
+    "indexes": [
+        { "name" : "appKey", "props": [{"name" : "appKeyIndex"}, {"name" : "appName"}]},
+    ]
+}

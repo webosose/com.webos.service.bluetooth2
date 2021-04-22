@@ -68,6 +68,7 @@ public:
 	bool provision(LSMessage &message);
 	bool supplyProvisioningOob(LSMessage &message);
 	bool supplyProvisioningNumeric(LSMessage &message);
+	bool createAppKey(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
@@ -96,6 +97,10 @@ private:
 	bool isScanDevicePresent(const std::string &adapterAddress, const std::string &uuid);
 	bool isNetworkCreated() const { return mNetworkCreated; }
 	bool removeFromDeviceList(const std::string &adapterAddress, const std::string &uuid);
+	/* Returns true if app key already active */
+	bool isAppKeyExist(uint16_t appKeyIndex);
+	/* Returns true if application is authorized to use the particular app key index */
+	bool isValidApplication(uint16_t appKeyIndex, LS::Message &request);
 
 private:
 	typedef struct device
@@ -113,6 +118,10 @@ private:
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
 
 	bool mNetworkCreated;
+	/* App Key Index created so far */
+	uint16_t mAppKeyIndex;
+
+	std::unordered_map<uint16_t, std::string> mAppKeys;
 };
 
 #endif //BLUETOOTHMESHPROFILESERVICE_H
