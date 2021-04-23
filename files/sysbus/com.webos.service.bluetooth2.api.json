@@ -83,7 +83,9 @@
         "com.webos.service.bluetooth2/mesh/supplyProvisioningOob",
         "com.webos.service.bluetooth2/mesh/supplyProvisioningNumeric",
         "com.webos.service.bluetooth2/mesh/createAppKey",
-        "com.webos.service.bluetooth2/mesh/model/config/set"
+        "com.webos.service.bluetooth2/mesh/model/config/set",
+        "com.webos.service.bluetooth2/mesh/model/send",
+        "com.webos.service.bluetooth2/mesh/model/receive"
     ],
     "bluetooth.management": [
         "com.webos.service.bluetooth2/a2dp/disconnect",

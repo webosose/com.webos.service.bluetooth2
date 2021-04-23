@@ -71,6 +71,8 @@ public:
 	bool createAppKey(LSMessage &message);
 	bool get(LSMessage &message);
 	bool set(LSMessage &message);
+	bool send(LSMessage &message);
+	bool receive(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
@@ -84,6 +86,9 @@ public:
 								 const std::string &promptType = "",
 								 uint16_t unicastAddress = 0,
 								 const std::string &uuid = "");
+	void modelDataReceived(const std::string &adapterAddress,
+									   uint16_t srcAddress, uint16_t destAddress,
+									   uint16_t appKey, uint8_t data[], uint32_t datalen);
 
 private:
 	/* Private helper methods */
@@ -107,6 +112,7 @@ private:
 	bool isValidApplication(uint16_t appKeyIndex, LS::Message &request);
 	void setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
 	pbnjson::JValue appendAppKeyIndexes(std::vector<uint16_t> appKeyList);
+	void sendOnOff(pbnjson::JValue &responseObject, LS::Message &request);
 
 private:
 	typedef struct device
@@ -122,8 +128,10 @@ private:
 	std::list<BluetoothClientWatch *> mProvResultWatch;
 	std::list<BluetoothClientWatch *> mGetModelConfigResultWatch;
 	std::list<BluetoothClientWatch *> mSetModelConfigResultWatch;
+	//std::list<BluetoothClientWatch *> mReceiveWatch;
 	/* map<adapterAddress, map<uuid, UnprovisionedDeviceInfo>> */
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
+	std::map<uint16_t, LS::SubscriptionPoint*> recvSubscriptions;
 
 	bool mNetworkCreated;
 	/* App Key Index created so far */
