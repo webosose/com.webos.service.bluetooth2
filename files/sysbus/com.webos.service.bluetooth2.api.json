@@ -18,7 +18,8 @@
         "com.webos.service.bluetooth2/device/getDiscoveredDevice",
         "com.webos.service.bluetooth2/device/getStatus",
         "com.webos.service.bluetooth2/ftp/getStatus",
-        "com.webos.service.bluetooth2/opp/getStatus"
+        "com.webos.service.bluetooth2/opp/getStatus",
+        "com.webos.service.bluetooth2/mesh/model/config/get"
     ],
     "bluetooth.operation": [
         "com.webos.service.bluetooth2/gatt/addService",
@@ -81,7 +82,8 @@
         "com.webos.service.bluetooth2/mesh/provision",
         "com.webos.service.bluetooth2/mesh/supplyProvisioningOob",
         "com.webos.service.bluetooth2/mesh/supplyProvisioningNumeric",
-        "com.webos.service.bluetooth2/mesh/createAppKey"
+        "com.webos.service.bluetooth2/mesh/createAppKey",
+        "com.webos.service.bluetooth2/mesh/model/config/set"
     ],
     "bluetooth.management": [
         "com.webos.service.bluetooth2/a2dp/disconnect",

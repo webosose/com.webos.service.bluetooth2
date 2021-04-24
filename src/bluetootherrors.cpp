@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,9 +49,9 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_AVRCP_NOT_A_FOLDER, "Item is not a folder"},
 	{BLUETOOTH_ERROR_MAP_FOLDER_NOT_FOUND, "Requested folder is not found"},
 	{BLUETOOTH_ERROR_MAP_MESSAGE_HANDLE_NOT_FOUND, "Requested message handle is not found"},
-	{BLUETOOTH_ERROR_MESH_NET_INDEX_DOES_NOT_EXIST, "netIndex does not exist"},
-	{BLUETOOTH_ERROR_MESH_APP_INDEX_ALREADY_EXISTS, "appIndex aleady exists"},
-	{BLUETOOTH_ERROR_MESH_APP_INDEX_DOES_NOT_EXIST, "appIndex does not exist"},
+	{BLUETOOTH_ERROR_MESH_NET_KEY_INDEX_DOES_NOT_EXIST, "netKeyIndex does not exist"},
+	{BLUETOOTH_ERROR_MESH_APP_KEY_INDEX_ALREADY_EXISTS, "appKeyIndex aleady exists"},
+	{BLUETOOTH_ERROR_MESH_APP_KEY_INDEX_DOES_NOT_EXIST, "appKeyIndex does not exist"},
 	{BLUETOOTH_ERROR_MESH_NO_RESPONSE, "No response from remote node"},
 	{BLUETOOTH_ERROR_MESH_BAD_PDU, "Bad PDU"},
 	{BLUETOOTH_ERROR_MESH_PROV_CONFIRMATION_FAILED, "Provision confirmation failed"},
@@ -59,7 +59,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_MESH_DEVICE_NOT_FOUND, "Device not found"},
 	{BLUETOOTH_ERROR_MESH_NODE_NOT_AVAILABLE, "Node not available"},
 	{BLUETOOTH_ERROR_MESH_INVALID_DEST_ADDRESS, "Invalid destination address"},
-	{BLUETOOTH_ERROR_MESH_NETWORK_EXISTS, "Mesh Network already exists"}
+	{BLUETOOTH_ERROR_MESH_NETWORK_EXISTS, "Mesh Network already exists"},
+	{BLUETOOTH_ERROR_MESH_CANNOT_UPDATE_APPKEY, "Cannot update appKey"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -270,8 +271,8 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MAP_STATUS_VALUE_PARAM_MISSING, "Required 'statusValue' parameter is not supplied"},
 	{BT_ERR_MAP_HANDLE_PARAM_MISSING, "Required 'handle' parameter is not supplied"},
 	{BT_ERR_AVRCP_PLAYBACK_STATUS_PARAM_MISSING, "Required 'playbackStatus' parameter is not supplied"},
-	{BT_ERR_MESH_NETINDEX_PARAM_MISSING, "Required 'netIndex' parameter is missing"},
-	{BT_ERR_MESH_APPINDEX_PARAM_MISSING, "Required 'appIndex' parameter missing"},
+	{BT_ERR_MESH_NET_KEY_INDEX_PARAM_MISSING, "Required 'netKeyIndex' parameter is missing"},
+	{BT_ERR_MESH_APP_KEY_INDEX_PARAM_MISSING, "Required 'appKeyIndex' parameter missing"},
 	{BT_ERR_MESH_DEST_ADDRESS_PARAM_MISSING, "Required 'destAddress' parameter missing"},
 	{BT_ERR_MESH_SRC_ADDRESS_PARAM_MISSING, "Required 'srcAddress' parameter missing"},
 	{BT_ERR_MESH_BEARER_PARAM_MISSING, "Required 'bearer' parameter missing"},
@@ -288,7 +289,11 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MESH_OOB_DATA_PARAM_MISSING, "Required 'oobData' parameter missing"},
 	{BT_ERR_MESH_ONOFF_PARAM_MISSING, "Required 'onoff' parameter missing"},
 	{BT_ERR_MESH_ADAPTER_NOT_AUTHORIZED, "Requested adapter address Not authorized to perform the action"},
-	{BT_ERR_MESH_NETWORK_NOT_CREATED, "Mesh network is not created"}
+	{BT_ERR_MESH_NETWORK_NOT_CREATED, "Mesh network is not created"},
+	{BT_ERR_MESH_CONFIG_PARAM_MISSING, "Required 'config' parameter missing"},
+	{BT_ERR_MESH_RELAY_PARAM_MISSING, "Required 'relay' parameter missing"},
+	{BT_ERR_MESH_RETRANSMIT_COUNT_PARAM_MISSING, "Required 'retransmitCount' parameter missing"},
+	{BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING, "Required 'retransmitIntervalSteps' parameter missing"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)

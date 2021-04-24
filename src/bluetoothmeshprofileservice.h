@@ -69,9 +69,12 @@ public:
 	bool supplyProvisioningOob(LSMessage &message);
 	bool supplyProvisioningNumeric(LSMessage &message);
 	bool createAppKey(LSMessage &message);
+	bool get(LSMessage &message);
+	bool set(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
+	void modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration);
 	void updateNetworkId(const std::string &adapterAddress, const uint64_t networkId);
 	void provisionResult(BluetoothError error, const std::string &adapterAddress,
 								 const std::string &request = "",
@@ -94,6 +97,7 @@ private:
 	bool updateDeviceList(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name);
 	pbnjson::JValue appendDevice(const int16_t rssi, const std::string &uuid, const std::string &name);
 	pbnjson::JValue appendDevices(const std::string &adapterAddress);
+	pbnjson::JValue appendRelayStatus(BleMeshRelayStatus relayStatus);
 	bool isScanDevicePresent(const std::string &adapterAddress, const std::string &uuid);
 	bool isNetworkCreated() const { return mNetworkCreated; }
 	bool removeFromDeviceList(const std::string &adapterAddress, const std::string &uuid);
@@ -101,6 +105,8 @@ private:
 	bool isAppKeyExist(uint16_t appKeyIndex);
 	/* Returns true if application is authorized to use the particular app key index */
 	bool isValidApplication(uint16_t appKeyIndex, LS::Message &request);
+	void setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration);
+	pbnjson::JValue appendAppKeyIndexes(std::vector<uint16_t> appKeyList);
 
 private:
 	typedef struct device
@@ -114,6 +120,8 @@ private:
 	std::list<BluetoothClientWatch *> mScanResultWatch;
 	std::list<BluetoothClientWatch *> mNetworkIdWatch;
 	std::list<BluetoothClientWatch *> mProvResultWatch;
+	std::list<BluetoothClientWatch *> mGetModelConfigResultWatch;
+	std::list<BluetoothClientWatch *> mSetModelConfigResultWatch;
 	/* map<adapterAddress, map<uuid, UnprovisionedDeviceInfo>> */
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
 

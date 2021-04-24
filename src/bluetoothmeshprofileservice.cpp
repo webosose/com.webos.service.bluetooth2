@@ -40,9 +40,17 @@ mAppKeyIndex(0)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, createAppKey)
 	LS_CREATE_CATEGORY_END
 
+	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, modelconfig)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, get)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, set)
+	LS_CREATE_CATEGORY_END
+
 	manager->registerCategory("/mesh", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/mesh", this);
 
+	//TODO: Get appkey index and application mappings from db and update mAppKeyIndex
+	manager->registerCategory("/mesh/model/config", LS_CATEGORY_TABLE_NAME(modelconfig), NULL, NULL);
+	manager->setCategoryData("/mesh/model/config", this);
 }
 
 BluetoothMeshProfileService::~BluetoothMeshProfileService()
@@ -192,12 +200,6 @@ bool BluetoothMeshProfileService::scanUnprovisionedDevices(LSMessage &message)
 		return true;
 	}
 
-	if (!isNetworkCreated())
-	{
-		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
-		return true;
-	}
-
 	std::string adapterAddress;
 
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
@@ -210,6 +212,11 @@ bool BluetoothMeshProfileService::scanUnprovisionedDevices(LSMessage &message)
 		return true;
 	}
 
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
 	/* Need not check if the method is subscribed. This method need to be
 		* subscribed, else schema check will return error
 		*/
@@ -249,6 +256,83 @@ bool BluetoothMeshProfileService::scanUnprovisionedDevices(LSMessage &message)
 	responseObj.put("devices", appendDevices(adapterAddress));
 	LSUtils::postToClient(request, responseObj);
 	return true;
+}
+
+void BluetoothMeshProfileService::setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration)
+{
+	BT_INFO("MESH", 0, "[%s : %d], mSetModelConfigResultWatch: %d", __FUNCTION__, __LINE__, mSetModelConfigResultWatch.size());
+	for (auto watch : mSetModelConfigResultWatch)
+	{
+		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		{
+			pbnjson::JValue object = pbnjson::Object();
+			object.put("subscribed", true);
+			object.put("returnValue", true);
+			object.put("adapterAddress", adapterAddress);
+			object.put("config", configuration.getConfig());
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+}
+
+void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration)
+{
+
+	BT_INFO("MESH", 0, "[%s : %d], getConfig: %s", __FUNCTION__, __LINE__, configuration.getConfig().c_str());
+
+	setModelConfigResult(adapterAddress, configuration);
+
+	for (auto watch : mGetModelConfigResultWatch)
+	{
+		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		{
+			std::string config(configuration.getConfig());
+
+			pbnjson::JValue object = pbnjson::Object();
+			object.put("subscribed", true);
+			object.put("returnValue", true);
+			object.put("adapterAddress", adapterAddress);
+			object.put("config", config);
+			if (config == "DEFAULT_TTL")
+			{
+				object.put("ttl", configuration.getTTL());
+			}
+			else if (config == "GATT_PROXY")
+			{
+				object.put("gattProxyState", configuration.getGattProxyState());
+			}
+			else if (config == "RELAY")
+			{
+				object.put("relayStatus", appendRelayStatus(configuration.getRelayStatus()));
+			}
+			else if (config == "APPKEYINDEX")
+			{
+				object.put("appKeyIndexes", appendAppKeyIndexes(configuration.getAppKeyIndexes()));
+			}
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendRelayStatus(BleMeshRelayStatus relayStatus)
+{
+	pbnjson::JValue object = pbnjson::Object();
+	object.put("relay", relayStatus.getRelay());
+	object.put("retransmitCount", relayStatus.getrelayRetransmitCount());
+	object.put("retransmitIntervalSteps", relayStatus.getRelayRetransmitIntervalSteps());
+	return object;
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendAppKeyIndexes(std::vector<uint16_t> appKeyList)
+{
+	pbnjson::JValue platformObjArr = pbnjson::Array();
+	for (auto i = appKeyList.begin(); i != appKeyList.end(); ++i)
+	{
+		platformObjArr.append(*i);
+	}
+	return platformObjArr;
 }
 
 void BluetoothMeshProfileService::scanResult(const std::string &adapterAddress,
@@ -377,12 +461,6 @@ bool BluetoothMeshProfileService::unprovisionedScanCancel(LSMessage &message)
 		return true;
 	}
 
-	if (!isNetworkCreated())
-	{
-		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 	return true;
@@ -398,6 +476,12 @@ bool BluetoothMeshProfileService::unprovisionedScanCancel(LSMessage &message)
 
 	if (requestObj.hasKey("bearer"))
 		bearer = requestObj["bearer"].asString();
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
 
 	BluetoothError error = impl->unprovisionedScanCancel(bearer);
 	if (BLUETOOTH_ERROR_NONE != error)
@@ -463,6 +547,7 @@ bool BluetoothMeshProfileService::createNetwork(LSMessage &message)
 		LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_NETWORK_EXISTS);
 		return true;
 	}
+
 	bool retVal = addClientWatch(request, &mNetworkIdWatch,
 															adapterAddress, "");
 	if (!retVal)
@@ -544,12 +629,6 @@ bool BluetoothMeshProfileService::provision(LSMessage &message)
 		return true;
 	}
 
-	if (!isNetworkCreated())
-	{
-		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
@@ -558,6 +637,12 @@ bool BluetoothMeshProfileService::provision(LSMessage &message)
 	if (!impl)
 	{
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
 		return true;
 	}
 
@@ -625,12 +710,6 @@ bool BluetoothMeshProfileService::supplyProvisioningOob(LSMessage &message)
 		return true;
 	}
 
-	if (!isNetworkCreated())
-	{
-		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
@@ -647,6 +726,12 @@ bool BluetoothMeshProfileService::supplyProvisioningOob(LSMessage &message)
 	if (requestObj.hasKey("bearer"))
 	{
 		bearer = requestObj["bearer"].asString();
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
 	}
 
 	BluetoothError error = impl->supplyProvisioningOob(bearer,
@@ -685,12 +770,6 @@ bool BluetoothMeshProfileService::supplyProvisioningNumeric(LSMessage &message)
 		return true;
 	}
 
-	if (!isNetworkCreated())
-	{
-		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
-		return true;
-	}
-
 	std::string adapterAddress;
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
@@ -707,6 +786,12 @@ bool BluetoothMeshProfileService::supplyProvisioningNumeric(LSMessage &message)
 	if (requestObj.hasKey("bearer"))
 	{
 		bearer = requestObj["bearer"].asString();
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
 	}
 
 	BluetoothError error = impl->supplyProvisioningNumeric(bearer, requestObj["number"].asNumber<int32_t>());
@@ -827,6 +912,13 @@ bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
 		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
 		return true;
 	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
 	uint16_t netKeyIndex = 0;
 	uint16_t appKeyIndex = mAppKeyIndex++;
 	if (requestObj.hasKey("netKeyIndex"))
@@ -856,7 +948,16 @@ bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
 		}
 		BT_INFO("MESH", 0, "Next available appkeyindex: %d", mAppKeyIndex);
 	}
-	BluetoothError error = impl->createAppKey(requestObj["bearer"].asString(),
+	mAppKeyIndex++;
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	BluetoothError error = impl->createAppKey(bearer,
 											  netKeyIndex, appKeyIndex);
 
 	if (BLUETOOTH_ERROR_NONE != error)
@@ -882,4 +983,260 @@ bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
 bool BluetoothMeshProfileService::isAppKeyExist(uint16_t appKeyIndex)
 {
 	return (mAppKeys.find(appKeyIndex) != mAppKeys.end());
+}
+
+bool BluetoothMeshProfileService::get(LSMessage &message)
+{
+
+	BT_INFO("MESH", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_6(PROP(adapterAddress, string),
+													PROP(bearer, string), PROP(destAddress, integer),
+													PROP_WITH_VAL_1(subscribe, boolean, true),
+													PROP(config, string),
+													PROP(netKeyIndex, integer))
+												 REQUIRED_2(destAddress, config));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("destAddress"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_DEST_ADDRESS_PARAM_MISSING);
+		else if (!requestObj.hasKey("config"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_CONFIG_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string config = requestObj["config"].asString();
+
+	if(config == "APPKEYINDEX")
+	{
+		if (!requestObj.hasKey("netKeyIndex"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_NET_KEY_INDEX_PARAM_MISSING);
+			return true;
+		}
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	if(requestObj["subscribe"].asBool())
+	{
+		bool retVal = addClientWatch(request, &mGetModelConfigResultWatch,
+																adapterAddress, "");
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
+	}
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	BluetoothError error = impl->configGet(bearer, requestObj["destAddress"].asNumber<int32_t>(), config, requestObj["netKeyIndex"].asNumber<int32_t>());
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("subscribed", requestObj["subscribe"].asBool());
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+bool BluetoothMeshProfileService::set(LSMessage &message)
+{
+	BT_INFO("MESH", 0, "Luna API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+	BleMeshRelayStatus relayStatus;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_11(PROP(adapterAddress, string),
+													PROP(bearer, string), PROP(destAddress, integer),
+													PROP_WITH_VAL_1(subscribe, boolean, true),
+													PROP(config, string),
+													PROP(netKeyIndex, integer), PROP(appKeyIndex, integer),
+													PROP(modelId, integer), PROP(ttl, integer), PROP(gattProxyState, integer),
+													OBJECT(relayStatus, OBJSCHEMA_3(PROP(relay, integer), PROP(retransmitCount, integer), PROP(retransmitIntervalSteps, integer))))
+													REQUIRED_2(destAddress, config));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("destAddress"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_DEST_ADDRESS_PARAM_MISSING);
+		else if (!requestObj.hasKey("config"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_CONFIG_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string config = requestObj["config"].asString();
+
+	if(config == "APPKEY_ADD" || config == "APPKEY_UPDATE")
+	{
+		if (!requestObj.hasKey("netKeyIndex"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_NET_KEY_INDEX_PARAM_MISSING);
+			return true;
+		}
+	}
+
+	if(config == "APPKEY_ADD" || config == "APPKEY_UPDATE" || config == "APPKEY_BIND")
+	{
+		if (!requestObj.hasKey("appKeyIndex"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_APP_KEY_INDEX_PARAM_MISSING);
+			return true;
+		}
+	}
+
+	if(config == "APPKEY_BIND")
+	{
+		if (!requestObj.hasKey("modelId"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_MODELID_PARAM_MISSING);
+			return true;
+		}
+	}
+
+	if(config == "DEFAULT_TTL")
+	{
+		if (!requestObj.hasKey("ttl"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_TTL_PARAM_MISSING);
+			return true;
+		}
+	}
+
+	if(config == "GATT_PROXY")
+	{
+		if (!requestObj.hasKey("gattProxyState"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_GATT_PROXY_STATE_PARAM_MISSING);
+			return true;
+		}
+	}
+
+	if(config == "RELAY")
+	{
+		if (!requestObj.hasKey("relayStatus"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_RELAY_STATUS_PARAM_MISSING);
+			return true;
+		}
+
+		auto relayStatusObj = requestObj["relayStatus"];
+
+		if(!relayStatusObj.hasKey("relay"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_RELAY_STATUS_PARAM_MISSING);
+			return true;
+		}
+		else if(!relayStatusObj.hasKey("retransmitCount"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_RETRANSMIT_COUNT_PARAM_MISSING);
+			return true;
+		}
+		else if(!relayStatusObj.hasKey("retransmitIntervalSteps"))
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING);
+			return true;
+		}
+
+		relayStatus.setRelay(relayStatusObj["relay"].asNumber<int32_t>());
+		relayStatus.setRelayRetransmitIntervalSteps(relayStatusObj["retransmitIntervalSteps"].asNumber<int32_t>());
+		relayStatus.setRelayRetransmitCount(relayStatusObj["retransmitCount"].asNumber<int32_t>());
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	if(requestObj["subscribe"].asBool())
+	{
+		bool retVal = addClientWatch(request, &mSetModelConfigResultWatch,
+																adapterAddress, "");
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
+	}
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	BluetoothError error = impl->configSet(bearer, requestObj["destAddress"].asNumber<int32_t>(), config,
+											requestObj["gattProxyState"].asNumber<int32_t>(),
+											requestObj["netKeyIndex"].asNumber<int32_t>(),
+											requestObj["appKeyIndex"].asNumber<int32_t>(),requestObj["modelId"].asNumber<int32_t>() ,
+											requestObj["ttl"].asNumber<int32_t>(), &relayStatus
+											);
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("subscribed", requestObj["subscribe"].asBool());
+	responseObj.put("adapterAddress", adapterAddress);
+
+	LSUtils::postToClient(request, responseObj);
+	return true;
 }
