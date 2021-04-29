@@ -74,7 +74,7 @@ public:
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
-	void modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration);
+	void modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
 	void updateNetworkId(const std::string &adapterAddress, const uint64_t networkId);
 	void provisionResult(BluetoothError error, const std::string &adapterAddress,
 								 const std::string &request = "",
@@ -105,7 +105,7 @@ private:
 	bool isAppKeyExist(uint16_t appKeyIndex);
 	/* Returns true if application is authorized to use the particular app key index */
 	bool isValidApplication(uint16_t appKeyIndex, LS::Message &request);
-	void setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration);
+	void setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
 	pbnjson::JValue appendAppKeyIndexes(std::vector<uint16_t> appKeyList);
 
 private:

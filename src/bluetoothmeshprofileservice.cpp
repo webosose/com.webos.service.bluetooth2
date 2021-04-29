@@ -258,7 +258,7 @@ bool BluetoothMeshProfileService::scanUnprovisionedDevices(LSMessage &message)
 	return true;
 }
 
-void BluetoothMeshProfileService::setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration)
+void BluetoothMeshProfileService::setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error)
 {
 	BT_INFO("MESH", 0, "[%s : %d], mSetModelConfigResultWatch: %d", __FUNCTION__, __LINE__, mSetModelConfigResultWatch.size());
 	for (auto watch : mSetModelConfigResultWatch)
@@ -266,6 +266,11 @@ void BluetoothMeshProfileService::setModelConfigResult(const std::string &adapte
 		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
 		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
 		{
+			if (BLUETOOTH_ERROR_NONE != error)
+			{
+				LSUtils::respondWithError(watch->getMessage(), error);
+				return;
+			}
 			pbnjson::JValue object = pbnjson::Object();
 			object.put("subscribed", true);
 			object.put("returnValue", true);
@@ -276,25 +281,30 @@ void BluetoothMeshProfileService::setModelConfigResult(const std::string &adapte
 	}
 }
 
-void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration)
+void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error)
 {
 
 	BT_INFO("MESH", 0, "[%s : %d], getConfig: %s", __FUNCTION__, __LINE__, configuration.getConfig().c_str());
 
-	setModelConfigResult(adapterAddress, configuration);
+	setModelConfigResult(adapterAddress, configuration, error);
 
 	for (auto watch : mGetModelConfigResultWatch)
 	{
 		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
 		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
 		{
+			if (BLUETOOTH_ERROR_NONE != error)
+			{
+				LSUtils::respondWithError(watch->getMessage(), error);
+				return;
+			}
 			std::string config(configuration.getConfig());
-
 			pbnjson::JValue object = pbnjson::Object();
 			object.put("subscribed", true);
 			object.put("returnValue", true);
 			object.put("adapterAddress", adapterAddress);
-			object.put("config", config);
+			object.put("config", configuration.getConfig());
+
 			if (config == "DEFAULT_TTL")
 			{
 				object.put("ttl", configuration.getTTL());
@@ -935,7 +945,7 @@ bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
 		if (isAppKeyExist(appKeyIndex))
 		{
 			BT_INFO("MESH", 0, "AppKey already exist, choose another key");
-			LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_APP_INDEX_ALREADY_EXISTS);
+			LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_APP_KEY_INDEX_ALREADY_EXISTS);
 			return true;
 		}
 	}
