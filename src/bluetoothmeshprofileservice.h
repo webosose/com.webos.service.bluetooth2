@@ -85,6 +85,7 @@ public:
 								 const std::string &numberDisplayType ="",
 								 const std::string &promptType = "",
 								 uint16_t unicastAddress = 0,
+								 uint8_t count = 0,
 								 const std::string &uuid = "");
 	void modelDataReceived(const std::string &adapterAddress,
 									   uint16_t srcAddress, uint16_t destAddress,

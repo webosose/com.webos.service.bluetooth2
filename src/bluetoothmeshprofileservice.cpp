@@ -84,6 +84,7 @@ void BluetoothMeshProfileService::initialize(const std::string &adapterAddress)
 		getImpl<BluetoothMeshProfile>(adapterAddress)->registerObserver(this);
 	}
 
+	/* Get Appkeys from db */
 	pbnjson::JValue result;
 	LSUtils::callDb8MeshGetAppKeys(getManager(), result);
 	pbnjson::JValue results = result["results"];
@@ -106,6 +107,24 @@ void BluetoothMeshProfileService::initialize(const std::string &adapterAddress)
 		{
 			mAppKeyIndex++;
 		}
+	}
+
+	/*Get node info from db */
+	pbnjson::JValue nodeInfo;
+	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
+	results = nodeInfo["results"];
+	std::vector<uint16_t> unicastAddresses;
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue meshEntry = results[i];
+			if (meshEntry.hasKey("unicastAddress"))
+			{
+				unicastAddresses.push_back((uint16_t)meshEntry["unicastAddress"].asNumber<int32_t>());
+			}
+		}
+		getImpl<BluetoothMeshProfile>(adapterAddress)->updateNodeInfo("PB-ADV", unicastAddresses);
 	}
 }
 
@@ -1098,6 +1117,7 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 								 const std::string &numberDisplayType,
 								 const std::string &promptType,
 								 uint16_t unicastAddress,
+								 uint8_t count,
 								 const std::string &uuid)
 {
 	BT_INFO("MESH", 0, "[%s : %d], num_watch: %d", __FUNCTION__, __LINE__, mProvResultWatch.size());
@@ -1140,6 +1160,13 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 				if (BLUETOOTH_ERROR_NONE == error)
 				{
 					object.put("unicastAddress", unicastAddress);
+					for (int i = 0; i < count; ++i)
+					{
+						if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress + i))
+						{
+							BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress + i);
+						}
+					}
 					removeFromDeviceList(adapterAddress, deviceUUID);
 				}
 			}

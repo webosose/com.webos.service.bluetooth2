@@ -202,3 +202,43 @@ bool LSUtils::callDb8MeshGetAppKeys(LS::Handle *serviceHandle, pbnjson::JValue &
 	return true;
 }
 
+bool LSUtils::callDb8MeshGetNodeInfo(LS::Handle *serviceHandle, pbnjson::JValue &result)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/find",
+											"{\"query\":{ \"from\":\"com.webos.service.bluetooth2.meshnodeinfo:1\"}}").get();
+
+	BT_INFO("MESH", 0, "After API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	result = replyObj;
+	return true;
+
+}
+bool LSUtils::callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicastAddress)
+{
+	pbnjson::JValue objArray = pbnjson::Array();
+	pbnjson::JValue nodeInfoObj = pbnjson::Object();
+	pbnjson::JValue reqObj = pbnjson::Object();
+
+	nodeInfoObj.put("_kind", "com.webos.service.bluetooth2.meshnodeinfo:1");
+	nodeInfoObj.put("unicastAddress", unicastAddress);
+	objArray.append(nodeInfoObj);
+	reqObj.put("objects", objArray);
+
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/put",
+											reqObj.stringify().c_str()).get();
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		return false;
+	}
+	return true;
+}
+

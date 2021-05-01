@@ -226,6 +226,8 @@ bool callDb8MeshSetToken(LS::Handle *serviceHandle, std::string &token);
 bool callDb8MeshPutAppKey(LS::Handle *serviceHandle, uint16_t appKeyInex,
 							const std::string &appName);
 bool callDb8MeshGetAppKeys(LS::Handle *serviceHandle, pbnjson::JValue &result);
+bool callDb8MeshGetNodeInfo(LS::Handle *serviceHandle, pbnjson::JValue &result);
+bool callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicastAddress);
 
 } // namespace LSUtils
 

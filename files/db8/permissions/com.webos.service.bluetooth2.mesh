@@ -20,5 +20,16 @@
             "update": "allow",
             "delete": "allow"
         }
+    },
+    {
+        "type": "db.kind",
+        "object": "com.webos.service.bluetooth2.meshnodeinfo:1",
+        "caller": "com.webos.service.bluetooth2",
+        "operations": {
+            "create": "allow",
+            "read": "allow",
+            "update": "allow",
+            "delete": "allow"
+        }
     }
 ]

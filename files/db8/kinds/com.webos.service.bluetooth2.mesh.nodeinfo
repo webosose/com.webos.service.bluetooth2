@@ -1,0 +1,7 @@
+{
+    "id": "com.webos.service.bluetooth2.meshnodeinfo:1",
+    "owner": "com.webos.service.bluetooth2",
+    "indexes": [
+        { "name" : "nodeinfo", "props": [{"name" : "unicastAddress"}]}
+    ]
+}
