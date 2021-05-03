@@ -19,7 +19,8 @@
         "com.webos.service.bluetooth2/device/getStatus",
         "com.webos.service.bluetooth2/ftp/getStatus",
         "com.webos.service.bluetooth2/opp/getStatus",
-        "com.webos.service.bluetooth2/mesh/model/config/get"
+        "com.webos.service.bluetooth2/mesh/model/config/get",
+        "com.webos.service.bluetooth2/mesh/model/config/getCompositionData"
     ],
     "bluetooth.operation": [
         "com.webos.service.bluetooth2/gatt/addService",

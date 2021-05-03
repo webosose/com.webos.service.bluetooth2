@@ -43,6 +43,7 @@ mAppKeyIndex(0)
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, modelconfig)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, get)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, set)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, getCompositionData)
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, model)
@@ -53,7 +54,6 @@ mAppKeyIndex(0)
 	manager->registerCategory("/mesh", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
 	manager->setCategoryData("/mesh", this);
 
-	//TODO: Get appkey index and application mappings from db and update mAppKeyIndex
 	manager->registerCategory("/mesh/model/config", LS_CATEGORY_TABLE_NAME(modelconfig), NULL, NULL);
 	manager->setCategoryData("/mesh/model/config", this);
 
@@ -314,6 +314,7 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 	BT_INFO("MESH", 0, "[%s : %d], getConfig: %s", __FUNCTION__, __LINE__, configuration.getConfig().c_str());
 
 	setModelConfigResult(adapterAddress, configuration, error);
+	std::string config(configuration.getConfig());
 
 	for (auto watch : mGetModelConfigResultWatch)
 	{
@@ -325,7 +326,6 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 				LSUtils::respondWithError(watch->getMessage(), error);
 				return;
 			}
-			std::string config(configuration.getConfig());
 			pbnjson::JValue object = pbnjson::Object();
 			object.put("subscribed", true);
 			object.put("returnValue", true);
@@ -351,6 +351,68 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 			LSUtils::postToClient(watch->getMessage(), object);
 		}
 	}
+	if (config == "COMPOSITION_DATA")
+	{
+		for (auto watch : mCompositionDataWatch)
+		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		{
+			if (BLUETOOTH_ERROR_NONE != error)
+			{
+				LSUtils::respondWithError(watch->getMessage(), error);
+				return;
+			}
+			pbnjson::JValue object = pbnjson::Object();
+			object.put("subscribed", true);
+			object.put("returnValue", true);
+			object.put("adapterAddress", adapterAddress);
+			object.put("compositionData", appendCompositionData(configuration.getCompositionData()));
+			LSUtils::postToClient(watch->getMessage(), object);
+		}
+	}
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendCompositionData(BleMeshCompositionData compositionData)
+{
+	pbnjson::JValue object = pbnjson::Object();
+	object.put("companyId", compositionData.getCompanyId());
+	object.put("productId", compositionData.getProductId());
+	object.put("versionId", compositionData.getVersionId());
+	object.put("numRplEnteries", compositionData.getNumRplEnteries());
+
+	pbnjson::JValue featureObject = pbnjson::Object();
+	BleMeshFeature features = compositionData.getFeatures();
+	featureObject.put("relay", features.getRelaySupport());
+	featureObject.put("proxy", features.getProxySupport());
+	featureObject.put("friend", features.getFriendSupport());
+	featureObject.put("lowPower", features.getLowPowerSupport());
+	object.put("features", featureObject);
+
+	pbnjson::JValue elementsObjectArr = pbnjson::Array();
+	std::vector<BleMeshElement> elements = compositionData.getElements();
+	for (auto i = 0; i < elements.size(); ++i)
+	{
+		pbnjson::JValue elementobject = pbnjson::Object();
+		elementobject.put("loc", elements[i].getLoc());
+		elementobject.put("numS",  elements[i].getNumS());
+		std::vector<uint32_t> sigModelIds = elements[i].getSigModelIds();
+		pbnjson::JValue sigModIdsArray = pbnjson::Array();
+		for (auto j = 0; j < sigModelIds.size(); ++j)
+		{
+			sigModIdsArray.append((int32_t)(sigModelIds[j]));
+		}
+		elementobject.put("sigModelIds", sigModIdsArray);
+		elementobject.put("numV",  elements[i].getNumV());
+		std::vector<uint32_t> vendorModelIds = elements[i].getVendorModelIds();
+		pbnjson::JValue vendorModIdsArray = pbnjson::Array();
+		for (auto k = 0; k < vendorModelIds.size(); ++k)
+		{
+			vendorModIdsArray.append((int32_t)(vendorModelIds[k]));
+		}
+		elementobject.put("vendorModelIds", vendorModIdsArray);
+		elementsObjectArr.append(elementobject);
+	}
+	object.put("elements", elementsObjectArr);
+	return object;
 }
 
 pbnjson::JValue BluetoothMeshProfileService::appendRelayStatus(BleMeshRelayStatus relayStatus)
@@ -1572,3 +1634,81 @@ void BluetoothMeshProfileService::modelDataReceived(const std::string &adapterAd
 	responseObj.put("adapterAddress", adapterAddress);
 	LSUtils::postToSubscriptionPoint(subscriptionPoint, responseObj);
 }
+
+bool BluetoothMeshProfileService::getCompositionData(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_4(PROP(adapterAddress, string),
+													 PROP(bearer, string), PROP(destAddress, integer),
+													 PROP(subscribe, boolean))  REQUIRED_2(destAddress, subscribe));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("destAddress"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_DEST_ADDRESS_PARAM_MISSING);
+		else if (!request.isSubscription())
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	if(requestObj["subscribe"].asBool())
+	{
+		bool retVal = addClientWatch(request, &mCompositionDataWatch,
+																adapterAddress, "");
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
+	}
+
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	BluetoothError error = impl->getCompositionData(bearer, requestObj["destAddress"].asNumber<int32_t>());
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("subscribed", requestObj["subscribe"].asBool());
+
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+

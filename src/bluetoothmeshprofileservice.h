@@ -73,6 +73,7 @@ public:
 	bool set(LSMessage &message);
 	bool send(LSMessage &message);
 	bool receive(LSMessage &message);
+	bool getCompositionData(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
@@ -104,6 +105,7 @@ private:
 	pbnjson::JValue appendDevice(const int16_t rssi, const std::string &uuid, const std::string &name);
 	pbnjson::JValue appendDevices(const std::string &adapterAddress);
 	pbnjson::JValue appendRelayStatus(BleMeshRelayStatus relayStatus);
+	pbnjson::JValue appendCompositionData(BleMeshCompositionData compositionData);
 	bool isScanDevicePresent(const std::string &adapterAddress, const std::string &uuid);
 	bool isNetworkCreated() const { return mNetworkCreated; }
 	bool removeFromDeviceList(const std::string &adapterAddress, const std::string &uuid);
@@ -129,6 +131,7 @@ private:
 	std::list<BluetoothClientWatch *> mProvResultWatch;
 	std::list<BluetoothClientWatch *> mGetModelConfigResultWatch;
 	std::list<BluetoothClientWatch *> mSetModelConfigResultWatch;
+	std::list<BluetoothClientWatch *> mCompositionDataWatch;
 	//std::list<BluetoothClientWatch *> mReceiveWatch;
 	/* map<adapterAddress, map<uuid, UnprovisionedDeviceInfo>> */
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
