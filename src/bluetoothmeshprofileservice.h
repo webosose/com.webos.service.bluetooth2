@@ -74,6 +74,7 @@ public:
 	bool send(LSMessage &message);
 	bool receive(LSMessage &message);
 	bool getCompositionData(LSMessage &message);
+	bool getMeshInfo(LSMessage &message);
 
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
@@ -116,6 +117,10 @@ private:
 	void setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
 	pbnjson::JValue appendAppKeyIndexes(std::vector<uint16_t> appKeyList);
 	void sendOnOff(pbnjson::JValue &responseObject, LS::Message &request);
+	pbnjson::JValue appendMeshInfo();
+	pbnjson::JValue appendNetKeys();
+	pbnjson::JValue appendAppKeys();
+	pbnjson::JValue appendProvisioners();
 
 private:
 	typedef struct device

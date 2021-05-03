@@ -38,6 +38,7 @@ mAppKeyIndex(0)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningOob)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningNumeric)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, createAppKey)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, getMeshInfo)
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, modelconfig)
@@ -1712,3 +1713,97 @@ bool BluetoothMeshProfileService::getCompositionData(LSMessage &message)
 	return true;
 }
 
+bool BluetoothMeshProfileService::getMeshInfo(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string),
+													 PROP(bearer, string)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("meshInfo", appendMeshInfo());
+	LSUtils::postToClient(request, responseObj);
+	return true;
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendMeshInfo()
+{
+	pbnjson::JValue object = pbnjson::Object();
+	object.put("name", "Mesh Network");
+	object.put("netKeys", appendNetKeys());
+	object.put("appKeys", appendAppKeys());
+	object.put("provisioners", appendProvisioners());
+	return object;
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendNetKeys()
+{
+	pbnjson::JValue platformObjArr = pbnjson::Array();
+	pbnjson::JValue object = pbnjson::Object();
+	object.put("index", 0);
+	object.put("keyRefresh",false);
+	platformObjArr.append(object);
+	return platformObjArr;
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendAppKeys()
+{
+	pbnjson::JValue platformObjArr = pbnjson::Array();
+	for (auto itr = mAppKeys.begin(); itr != mAppKeys.end(); ++itr)
+	{
+		pbnjson::JValue object = pbnjson::Object();
+		object.put("index", itr->first);
+		object.put("boundNetKeyIndex",0);
+		platformObjArr.append(object);
+	}
+	return platformObjArr;
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendProvisioners()
+{
+	pbnjson::JValue platformObjArr = pbnjson::Array();
+	pbnjson::JValue object = pbnjson::Object();
+	object.put("name", "BLE Mesh");
+	object.put("unicastAddress",0001);
+	platformObjArr.append(object);
+	return platformObjArr;
+}
