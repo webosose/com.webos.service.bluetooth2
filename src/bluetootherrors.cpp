@@ -62,7 +62,13 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_MESH_NETWORK_EXISTS, "Mesh Network already exists"},
 	{BLUETOOTH_ERROR_MESH_CANNOT_UPDATE_APPKEY, "Cannot update appKey"},
 	{BLUETOOTH_ERROR_MESH_NO_RESPONSE_FROM_NODE, "No response from remote node"},
-        {BLUETOOTH_ERROR_MESH_INVALID_COMMAND, "Invalid command"}
+	{BLUETOOTH_ERROR_MESH_INVALID_COMMAND, "Invalid command"},
+	{BLUETOOTH_ERROR_MESH_TIMEOUT, "Timeout"},
+	{BLUETOOTH_ERROR_MESH_CONFIRMATION_FAILED, "Confirmation failed"},
+	{BLUETOOTH_ERROR_MESH_OUT_OF_RESOURCES, "Out of resources"},
+	{BLUETOOTH_ERROR_MESH_DECRYPTION_ERROR, "Decryption error"},
+	{BLUETOOTH_ERROR_MESH_UNEXPECTED_ERROR, "Unexpected error"},
+	{BLUETOOTH_ERROR_MESH_CANNOT_ASSIGN_ADDRESSES, "Cannot assign addresses"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
