@@ -296,6 +296,7 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MESH_NUMBER_PARAM_MISSING, "Required 'number' parameter missing"},
 	{BT_ERR_MESH_OOB_DATA_PARAM_MISSING, "Required 'oobData' parameter missing"},
 	{BT_ERR_MESH_ONOFF_PARAM_MISSING, "Required 'onoff' parameter missing"},
+	{BT_ERR_MESH_APP_KEY_INDEX_INVALID, "App key index doesn't belong to this app"},
 	{BT_ERR_MESH_ADAPTER_NOT_AUTHORIZED, "Requested adapter address Not authorized to perform the action"},
 	{BT_ERR_MESH_NETWORK_NOT_CREATED, "Mesh network is not created"},
 	{BT_ERR_MESH_CONFIG_PARAM_MISSING, "Required 'config' parameter missing"},
