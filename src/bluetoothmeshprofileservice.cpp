@@ -1678,6 +1678,24 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 		return true;
 	}
 
+	if(config == "APPKEY_ADD" || config == "APPKEY_UPDATE" || config == "APPKEY_BIND"
+		|| config == "APPKEY_UNBIND" || config == "APPKEY_DELETE")
+	{
+		uint16_t appKeyIndex = (uint16_t)requestObj["appKeyIndex"].asNumber<int32_t>();
+
+		if (!isAppKeyExist(appKeyIndex))
+		{
+			LSUtils::respondWithError(request, BLUETOOTH_ERROR_MESH_APP_KEY_INDEX_DOES_NOT_EXIST);
+			return true;
+		}
+
+		if(!isValidApplication(appKeyIndex, request))
+		{
+			LSUtils::respondWithError(request, BLUETOOTH_ERROR_NOT_ALLOWED);
+			return true;
+		}
+	}
+
 	if(requestObj["subscribe"].asBool())
 	{
 		bool retVal = addClientWatch(request, &mSetModelConfigResultWatch,
