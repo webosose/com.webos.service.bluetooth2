@@ -113,7 +113,7 @@ bool LSUtils::callDb8MeshFindToken(LS::Handle *serviceHandle, std::string &token
 		return false;
 	}
 
-	BT_DEBUG("MESH", 0, "replyObj: %s", replyObj.stringify().c_str());
+	BT_DEBUG("replyObj: %s", replyObj.stringify().c_str());
 	pbnjson::JValue resultsObj = pbnjson::Array();
 	pbnjson::JValue results = replyObj["results"];
 	if (results.isValid() && (results.arraySize() > 0))

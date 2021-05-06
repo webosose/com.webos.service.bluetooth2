@@ -105,7 +105,7 @@ void BluetoothMeshProfileService::initialize(const std::string &adapterAddress)
 			{
 				uint16_t appKeyIndex = (uint16_t)meshEntry["appKey"].asNumber<int32_t>();
 				std::string appName = meshEntry["appName"].asString();
-				BT_DEBUG("MESH", 0, "appkey: %d, appname: %s", appKeyIndex, appName.c_str());
+				BT_DEBUG("appkey: %d, appname: %s", appKeyIndex, appName.c_str());
 				mAppKeys.insert(std::pair<uint16_t, std::string>(appKeyIndex, appName));
 			}
 		}
@@ -723,7 +723,7 @@ void BluetoothMeshProfileService::updateNetworkId(const std::string &adapterAddr
 			}
 			else
 			{
-				BT_DEBUG("MESH", 0, "Db8 set mesh token success");
+				BT_DEBUG("Db8 set mesh token success");
 			}
 			LSUtils::postToClient(watch->getMessage(), object);
 
