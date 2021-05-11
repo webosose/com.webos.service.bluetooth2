@@ -59,12 +59,12 @@ namespace LSUtils
 	class ClientWatch;
 }
 
-typedef struct
+struct AdvertiserInfo
 {
-	AdvertiseData advertiseData;
-	AdvertiseData scanResponse;
-	AdvertiseSettings settings;
-} AdvertiserInfo;
+	AdvertiseData advertiseData = {};
+	AdvertiseData scanResponse = {};
+	AdvertiseSettings settings = {};
+};
 
 class AdapterInfo
 {

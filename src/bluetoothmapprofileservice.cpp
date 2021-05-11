@@ -1,4 +1,4 @@
-// Copyright (c) 2020 LG Electronics, Inc.
+// Copyright (c) 2020-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ bool BluetoothMapProfileService::prepareGetMasInstances(LS::Message &request, pb
 bool BluetoothMapProfileService::requiredCheckForMapProfile(LS::Message &request, pbnjson::JValue &requestObj, std::string &adapterAddress)
 {
 	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
-	return false;
+		return false;
 
 	std::string deviceAddress = requestObj["address"].asString();
 
@@ -403,7 +403,7 @@ void BluetoothMapProfileService::handleConnectClientDisappeared(const std::strin
 	if (watchIter == (watchesIter->second).end())
 		return;
 
-	 auto disconnectCallback = [ = ](BluetoothError error, const std::string &instanceName) {
+	auto disconnectCallback = [ = ](BluetoothError error, const std::string &instanceName) {
 		handleMessageNotificationClientDisappeared(adapterAddress,sessionKey);
 		removeDeviceAsConnectedWithSessionKey(adapterAddress, sessionKey);
 		markDeviceAsNotConnected(adapterAddress, sessionKey);
@@ -635,7 +635,6 @@ bool BluetoothMapProfileService::getStatus(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	std::string adapterAddress;
-	bool subscribed = false;
 
 	if (!prepareGetStatus(request, requestObj, adapterAddress))
 		return true;
@@ -678,7 +677,6 @@ bool BluetoothMapProfileService::getStatus(LSMessage &message)
 		}
 
 		subscriptionPoint->subscribe(request);
-		subscribed = true;
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
@@ -929,11 +927,16 @@ void BluetoothMapProfileService::addGetMessageFilters(const pbnjson::JValue &req
 				break;
 			case BluetoothMapProperty::Type::MESSAGETYPES:
 			case BluetoothMapProperty::Type::FIELDS:
-				std::vector<std::string> objValue;
-				auto ObjArray = filterObj[filter.first];
-				for (int n = 0; n < ObjArray.arraySize(); n++)
-					objValue.push_back(ObjArray[n].asString());
-				filters.push_back(BluetoothMapProperty(filter.second, objValue));
+				{
+					std::vector<std::string> objValue;
+					auto ObjArray = filterObj[filter.first];
+					for (int n = 0; n < ObjArray.arraySize(); n++)
+						objValue.push_back(ObjArray[n].asString());
+					filters.push_back(BluetoothMapProperty(filter.second, objValue));
+					break;
+				}
+			default:
+				break;
 			}
 		}
 	}

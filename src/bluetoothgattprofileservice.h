@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2020 LG Electronics, Inc.
+// Copyright (c) 2015-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ namespace LSUtils
 	class ClientWatch;
 }
 
-typedef struct
+struct MonitorCharacteristicSubscriptionInfo
 {
 	std::string deviceAddress;
 	std::string adapterAddress;
@@ -52,9 +52,9 @@ typedef struct
 	uint16_t handle;
 	BluetoothUuid characteristicUuid;
 	BluetoothUuidList characteristicUuids;
-} MonitorCharacteristicSubscriptionInfo;
+};
 
-typedef struct
+struct GattConnSubsInfo
 {
 	std::string adapaterAddress;
 	std::string deviceAddress;
@@ -81,9 +81,9 @@ typedef struct
 		}
 		return false;
 	}
-} GattConnSubsInfo;
+};
 
-typedef struct
+struct GattStatusSubsInfo
 {
 	std::string adapaterAddress;
 	std::string deviceAddress;
@@ -122,16 +122,16 @@ typedef struct
 		}
 		return false;
 	}
-} GattStatusSubsInfo;
+};
 
 
 class CharacteristicWatch
 {
 public:
 	CharacteristicWatch() :
-	    mRefCount(0),
-		mRegistered(false),
-		handle(0)
+	handle(0),
+	mRefCount(0),
+	mRegistered(false)
 	{
 	}
 

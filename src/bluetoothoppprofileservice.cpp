@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2020 LG Electronics, Inc.
+// Copyright (c) 2015-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-
+#include <inttypes.h>
 #include "bluetoothoppprofileservice.h"
 #include "bluetoothmanagerservice.h"
 #include "bluetootherrors.h"
@@ -96,16 +96,16 @@ void BluetoothOppProfileService::cancelTransfer(BluetoothOppTransferId id, bool 
 
 	Transfer *transfer = transferIter->second;
 
-	BT_DEBUG("Cancel OPP transfer %llu for device %s", id, transfer->deviceAddress.c_str());
+	BT_DEBUG("Cancel OPP transfer %" PRIu64 " for device %s", id, transfer->deviceAddress.c_str());
 
 	// To block anybody else from deleting the transfer mark
 	// it has canceled
-	BT_DEBUG("Marking transfer %llu as canceled", id);
+	BT_DEBUG("Marking transfer %" PRIu64 " as canceled", id);
 	transfer->canceled = true;
 	transfer->clientDisappeared = clientDisappeared;
 
 	auto cancelCallback = [this, transferIter, id, transfer](BluetoothError error) {
-		BT_DEBUG("Successfully canceled bluetooth OPP transfer %llu", id);
+		BT_DEBUG("Successfully canceled bluetooth OPP transfer %" PRIu64, id);
 
 		// Either that this time the client is invalid because he disappeared
 		// (crashed, canceled call, ...) or he is still valid because the
@@ -130,14 +130,14 @@ void BluetoothOppProfileService::cancelTransfer(BluetoothOppTransferId id, bool 
 
 void BluetoothOppProfileService::createTransfer(BluetoothOppTransferId id, const std::string &address, const std::string &adapterAddress, LSMessage *message)
 {
-	BT_DEBUG("Creating transfer %llu for device %s", id, address.c_str());
+	BT_DEBUG("Creating transfer %" PRIu64 " for device %s", id, address.c_str());
 
 	Transfer *transfer = new Transfer;
 	transfer->deviceAddress = address;
 	transfer->adapterAddress = adapterAddress;
 
 	auto transferClientDroppedCallback = [this, id]() {
-		BT_DEBUG("Client for transfer %llu dropped", id);
+		BT_DEBUG("Client for transfer %" PRIu64 " dropped", id);
 		cancelTransfer(id, true);
 	};
 
@@ -196,11 +196,11 @@ void BluetoothOppProfileService::removeTransfer(std::map<BluetoothOppTransferId,
 	// canceling it.
 	if (transfer->canceled)
 	{
-		BT_DEBUG("Not removing transfer %llu yet as it is canceled already", id);
+		BT_DEBUG("Not removing transfer %" PRIu64 " yet as it is canceled already", id);
 		return;
 	}
 
-	BT_DEBUG("Removing transfer %llu", id);
+	BT_DEBUG("Removing transfer %" PRIu64, id);
 
 	mTransfers.erase(transferIter);
 	delete transfer;
@@ -731,7 +731,7 @@ void BluetoothOppProfileService::notifyTransferConfirmation(uint64_t requestInde
 
 void BluetoothOppProfileService::transferConfirmationRequested(BluetoothOppTransferId transferId, const std::string &adapterAddress, const std::string &address, const std::string &deviceName, const std::string &fileName, uint64_t fileSize)
 {
-	BT_DEBUG("Received transfer request from adapter %s device %s and file %s with size %llu", adapterAddress.c_str(), address.c_str(), deviceName.c_str(), fileSize);
+	BT_DEBUG("Received transfer request from adapter %s device %s and file %s with size %" PRIu64, adapterAddress.c_str(), address.c_str(), deviceName.c_str(), fileSize);
 
 	if (mTransferRequestsAllowed.find(adapterAddress) == mTransferRequestsAllowed.end())
 	{

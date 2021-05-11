@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@
 
 using namespace std::placeholders;
 
-std::map<std::string, BluetoothPairingIOCapability> pairingIOCapability =
+static const std::map<std::string, BluetoothPairingIOCapability> pairingIOCapability =
 {
 	{"NoInputNoOutput", BLUETOOTH_PAIRING_IO_CAPABILITY_NO_INPUT_NO_OUTPUT},
 	{"DisplayOnly", BLUETOOTH_PAIRING_IO_CAPABILITY_DISPLAY_ONLY},
@@ -85,8 +85,9 @@ BluetoothManagerService::BluetoothManagerService() :
 	if (capabilityOverride != NULL)
 		bluetoothCapability = capabilityOverride;
 
-	if (pairingIOCapability.find(bluetoothCapability) != pairingIOCapability.end())
-		mPairingIOCapability = pairingIOCapability[bluetoothCapability];
+	auto it = pairingIOCapability.find(bluetoothCapability);
+	if (it != pairingIOCapability.cend())
+		mPairingIOCapability = it->second;
 	else
 	{
 		BT_WARNING(MSGID_INVALID_PAIRING_CAPABILITY, 0, "Pairing capability not valid, fallback to simple pairing");
@@ -806,7 +807,7 @@ bool BluetoothManagerService::setPairableState(const std::string &adapterAddress
 	BT_DEBUG("Setting pairable to %d", value);
 	bool retVal = false;
 
-	auto pairableCB = [this, value, &retVal, adapterAddress](BluetoothError error) {
+	auto pairableCB = [this, &retVal, adapterAddress](BluetoothError error) {
 		if (error == BLUETOOTH_ERROR_NONE)
 		{
 			BT_DEBUG("Pairable value set in SIL with no errors");
@@ -1014,8 +1015,6 @@ bool BluetoothManagerService::startFilteringDiscovery(LSMessage &message)
 	std::string accessCode;
 	TransportType transportType = TransportType::BT_TRANSPORT_TYPE_NONE;
 	InquiryAccessCode inquiryAccessCode = InquiryAccessCode::BT_ACCESS_CODE_NONE; // CID 166097
-	uint8_t mergedTransportType = 0;
-	uint8_t mergedInquiryAccessCode = 0;
 
 	if (!isRequestedAdapterAvailable(request, requestObj, adapterAddress))
 		return true;
@@ -1932,7 +1931,7 @@ bool BluetoothManagerService::sendHciCommand(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto sendHciCommandCallback = [this, requestMessage, adapterAddress](BluetoothError error, uint16_t eventCode, BluetoothHCIParameterList parameters ) {
+	auto sendHciCommandCallback = [requestMessage, adapterAddress](BluetoothError error, uint16_t eventCode, BluetoothHCIParameterList parameters ) {
 		LS::Message request(requestMessage);
 		pbnjson::JValue responseObj = pbnjson::Object();
 		if (error != BLUETOOTH_ERROR_NONE)
@@ -2107,7 +2106,7 @@ bool BluetoothManagerService::getTraceStatus(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto getTraceStatusCallback  = [this, requestMessage, adapterAddress](BluetoothError error,
+	auto getTraceStatusCallback  = [requestMessage, adapterAddress](BluetoothError error,
 																bool stackTraceEnabled, bool snoopTraceEnabled,
 																int stackTraceLevel,
 																const std::string &stackLogPath,
@@ -2479,7 +2478,7 @@ bool BluetoothManagerService::configureAdvertisement(LSMessage &message)
 		}
 	}
 
-	auto leConfigCallback = [this,requestMessage,adapterAddress](BluetoothError error) {
+	auto leConfigCallback = [requestMessage,adapterAddress](BluetoothError error) {
 		pbnjson::JValue responseObj = pbnjson::Object();
 
 		if (BLUETOOTH_ERROR_NONE == error)
@@ -2656,8 +2655,7 @@ bool BluetoothManagerService::startAdvertising(LSMessage &message)
 		return true;
 	}
 
-	AdvertiserInfo advInfo;
-	memset(&advInfo, 0, sizeof(AdvertiserInfo));
+	AdvertiserInfo advInfo{};
 	//Assign default value true
 	advInfo.settings.connectable = true;
 	BT_DEBUG("BluetoothManagerService::%s %d advertiseData.includeTxPower:%d", __FUNCTION__, __LINE__, advInfo.advertiseData.includeTxPower);
@@ -2868,9 +2866,6 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 	LS::Message request(&message);
 	pbnjson::JValue requestObj;
 	int parseError = 0;
-	bool isSettingsChanged = false;
-	bool isAdvDataChanged = false;
-	bool isScanRspChanged = false;
 
 	const std::string schema =  STRICT_SCHEMA(PROPS_5(PROP(adapterAddress, string), PROP(advertiserId, integer),
 											  OBJECT(settings, OBJSCHEMA_5(PROP(connectable, boolean), PROP(txPower, integer),
@@ -2893,8 +2888,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 		return true;
 	}
 
-	AdvertiserInfo advInfo;
-	memset(&advInfo, 0, sizeof(AdvertiserInfo));
+	AdvertiserInfo advInfo{};
 	BT_DEBUG("BluetoothManagerService::%s %d advertiseData.includeTxPower:%d", __FUNCTION__, __LINE__, advInfo.advertiseData.includeTxPower);
 	BT_DEBUG("BluetoothManagerService::%s %d scanResponse.includeTxPower:%d", __FUNCTION__, __LINE__, advInfo.scanResponse.includeTxPower);
 
@@ -2906,7 +2900,6 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 
 	if (requestObj.hasKey("settings"))
 	{
-		isSettingsChanged = true;
 		auto settingsObj = requestObj["settings"];
 		if (settingsObj.hasKey("connectable"))
 			advInfo.settings.connectable = settingsObj["connectable"].asBool();
@@ -2926,7 +2919,7 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	auto leUpdateAdvCallback = [this,requestMessage,adapterAddress](BluetoothError error) {
+	auto leUpdateAdvCallback = [requestMessage,adapterAddress](BluetoothError error) {
 		if (BLUETOOTH_ERROR_NONE != error)
 		{
 			pbnjson::JValue responseObj = pbnjson::Object();
@@ -2939,7 +2932,6 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 
 	if(requestObj.hasKey("advertiseData"))
 	{
-		isAdvDataChanged = true;
 		if(!setAdvertiseData(message, requestObj,advInfo.advertiseData, false))
 			return true;
 
@@ -2948,7 +2940,6 @@ bool BluetoothManagerService::updateAdvertising(LSMessage &message)
 
 	if(requestObj.hasKey("scanResponse"))
 	{
-		isScanRspChanged = true;
 		if(!setAdvertiseData(message, requestObj, advInfo.scanResponse, true))
 			return true;
 
@@ -2969,7 +2960,7 @@ void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, ui
 {
 	if(isSettingsChanged)
 	{
-		auto leAdvSettingCallback = [this,requestMessage,advertiserId,isAdvDataChanged,isScanRspChanged,advInfo](BluetoothError error)
+		auto leAdvSettingCallback = [this, requestMessage,advInfo](BluetoothError error)
 		{
 			pbnjson::JValue responseObj = pbnjson::Object();
 			if (BLUETOOTH_ERROR_NONE == error)
@@ -2990,7 +2981,7 @@ void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, ui
 
 	if(isAdvDataChanged)
 	{
-		auto leAdvDataChangedCallback = [this,requestMessage,advertiserId,isScanRspChanged,advInfo](BluetoothError error)
+		auto leAdvDataChangedCallback = [this, requestMessage,advInfo](BluetoothError error)
 		{
 			pbnjson::JValue responseObj = pbnjson::Object();
 			if (BLUETOOTH_ERROR_NONE == error)
@@ -3012,7 +3003,7 @@ void BluetoothManagerService::updateAdvertiserData(LSMessage *requestMessage, ui
 
 	if(isScanRspChanged)
 	{
-		auto leScanRspChangedCallback = [this,requestMessage,advertiserId,advInfo](BluetoothError error)
+		auto leScanRspChangedCallback = [this,requestMessage,advInfo](BluetoothError error)
 		{
 			pbnjson::JValue responseObj = pbnjson::Object();
 			if (BLUETOOTH_ERROR_NONE == error)

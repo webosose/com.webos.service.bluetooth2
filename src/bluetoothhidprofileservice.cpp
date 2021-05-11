@@ -140,7 +140,7 @@ bool BluetoothHidProfileService::getReport(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto getReportCallback  = [this, requestMessage, adapterAddress, deviceAddress](BluetoothError error, const uint8_t *data, size_t size) {
+	auto getReportCallback  = [requestMessage, adapterAddress, deviceAddress](BluetoothError error, const uint8_t *data, size_t size) {
 			BT_INFO("HID", 0, "Return of getReport is %d", error);
 
 			pbnjson::JValue responseObj = pbnjson::Object();
@@ -160,7 +160,7 @@ bool BluetoothHidProfileService::getReport(LSMessage &message)
 
 			pbnjson::JValue reportDataObj = pbnjson::Array();
 
-			for (int i = 0; i < size; i ++)
+			for (size_t i = 0; i < size; i ++)
 				reportDataObj.append((int32_t)data[i]);
 
 			responseObj.put("reportData", reportDataObj);
@@ -251,7 +251,7 @@ bool BluetoothHidProfileService::setReport(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto setReportCallback  = [this, requestMessage, adapterAddress, deviceAddress](BluetoothError error) {
+	auto setReportCallback  = [requestMessage, adapterAddress, deviceAddress](BluetoothError error) {
 
 			BT_INFO("HID", 0, "Return of setReport is %d", error);
 			pbnjson::JValue responseObj = pbnjson::Object();

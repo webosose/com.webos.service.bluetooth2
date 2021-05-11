@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2020 LG Electronics, Inc.
+// Copyright (c) 2015-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,16 +34,16 @@ using namespace std::placeholders;
 BluetoothAvrcpProfileService::BluetoothAvrcpProfileService(BluetoothManagerService *manager) :
         BluetoothProfileService(manager, "AVRCP", "0000110c-0000-1000-8000-00805f9b34fb",
         "0000110e-0000-1000-8000-00805f9b34fb"),
+	 mEqualizer("off"),
+	 mRepeat("off"),
+	 mShuffle("off"),
+	 mScan("off"),
 	 mIncomingMediaMetaDataWatch(NULL),
 	 mIncomingMediaPlayStatusWatch(NULL),
 	 mMediaMetaDataRequestsAllowed(false),
 	 mMediaPlayStatusRequestsAllowed(false),
 	 mRequestIndex(0),
 	 mNextRequestId(1),
-	 mEqualizer("off"),
-	 mRepeat("off"),
-	 mShuffle("off"),
-	 mScan("off"),
 	 mMediaMetaData(0)
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
@@ -343,6 +343,7 @@ bool BluetoothAvrcpProfileService::awaitMediaMetaDataRequest(LSMessage &message)
 
 	bool retVal = addClientWatch(request, &mIncomingMediaMetaDataWatchesForMultipleAdapters,
 			adapterAddress, "");
+	static_cast<void>(retVal);
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -463,6 +464,7 @@ bool BluetoothAvrcpProfileService::awaitMediaPlayStatusRequest(LSMessage &messag
 
 	bool retVal = addClientWatch(request, &mIncomingMediaPlayStatusWatchesForMultipleAdapters,
 			adapterAddress, "");
+	static_cast<void>(retVal);
 
 	pbnjson::JValue responseObj = pbnjson::Object();
 
@@ -933,6 +935,8 @@ void BluetoothAvrcpProfileService::playerApplicationSettingsReceived(const Bluet
 			mScan = scanEnumToString(prop.getValue<BluetoothPlayerApplicationSettingsScan>());
 			changed = true;
 			break;
+		default:
+			break;
 		}
 	}
 
@@ -1348,7 +1352,7 @@ bool BluetoothAvrcpProfileService::getMediaPlayStatus(LSMessage &message)
 			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
 		else if (!request.isSubscription())
 			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
-                else if (!requestObj.hasKey("address"))
+		else if (!requestObj.hasKey("address"))
 			LSUtils::respondWithError(request, BT_ERR_AVRCP_DEVICE_ADDRESS_PARAM_MISSING);
 		else
 			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
@@ -2427,7 +2431,6 @@ void BluetoothAvrcpProfileService::deleteMediaRequest(bool metaData, const std::
 void BluetoothAvrcpProfileService::deleteMediaRequest(bool metaData, const std::string &requestIdStr,
 													  const std::string &adapterAddress)
 {
-	MediaRequest *mediaRequest = NULL;
 	std::map<uint64_t, std::map<std::string, MediaRequest*> > *mapRequests;
 	if (metaData)
 	{
@@ -3116,7 +3119,7 @@ bool BluetoothAvrcpProfileService::getNumberOfItems(LSMessage &message)
 
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	auto numberOfItemsCallback = [this, requestMessage, &adapterAddress, &deviceAddress](
+	auto numberOfItemsCallback = [requestMessage, adapterAddress, deviceAddress](
 									 BluetoothError error, const uint32_t numberOfItems) {
 		if (BLUETOOTH_ERROR_NONE != error)
 		{
@@ -3479,7 +3482,7 @@ bool BluetoothAvrcpProfileService::search(LSMessage &message)
 	}
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
-	auto searchCallback = [this, requestMessage, adapterAddress, deviceAddress](
+	auto searchCallback = [requestMessage, adapterAddress, deviceAddress](
 		BluetoothError error, const std::string searchListPath) {
 		if (BLUETOOTH_ERROR_NONE != error)
 		{
@@ -3557,7 +3560,7 @@ bool BluetoothAvrcpProfileService::notifyMediaPlayStatus(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto requestCallback = [this, requestMessage, adapterAddress, deviceAddress](BluetoothError error)
+	auto requestCallback = [requestMessage, adapterAddress, deviceAddress](BluetoothError error)
 	{
 		BT_INFO("AVRCP", 0, "Return of notifyMediaPlayStatus is %d", error);
 

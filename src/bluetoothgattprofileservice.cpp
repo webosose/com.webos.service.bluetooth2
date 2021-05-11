@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2020 LG Electronics, Inc.
+// Copyright (c) 2015-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -2747,7 +2747,6 @@ bool BluetoothGattProfileService::readDescriptorValue(LSMessage &message)
 	std::string serviceUuid;
 	std::string characteristicUuid;
 	std::string descriptorUuid;
-	uint16_t handle = 0;
 	BluetoothGattDescriptor descriptorToRead;
 
 	if (requestObj.hasKey("instanceId"))
@@ -3062,7 +3061,7 @@ bool BluetoothGattProfileService::writeDescriptorValue(LSMessage &message)
 	LSMessage *requestMessage = request.get();
 	LSMessageRef(requestMessage);
 
-	auto writeDescriptorCallback  = [this, requestMessage, serviceUuid, characteristicUuid, descriptorUuid, adapterAddress, deviceAddress](BluetoothError error) {
+	auto writeDescriptorCallback  = [requestMessage, serviceUuid, characteristicUuid, descriptorUuid, adapterAddress, deviceAddress](BluetoothError error) {
 
 		if (error != BLUETOOTH_ERROR_NONE)
 		{
@@ -3320,7 +3319,7 @@ void BluetoothGattProfileService::addCharacteristicCallback(LocalServer* server,
 		return;
 	}
 
-	auto callback = [this, server, newService](BluetoothError serviceError) {
+	auto callback = [server, newService](BluetoothError serviceError) {
 		if (serviceError != BLUETOOTH_ERROR_NONE)
 			return;
 
@@ -3378,7 +3377,7 @@ bool BluetoothGattProfileService::removeLocalService(uint16_t serverId, const Bl
 	if (service == nullptr)
 		return false;
 
-	auto callback = [this, server, uuid](BluetoothError error) {
+	auto callback = [server, uuid](BluetoothError error) {
 		server->removeLocalService(uuid);
 	};
 	BT_DEBUG("[%s](%d) getImpl->removeService\n", __FUNCTION__, __LINE__);
@@ -3404,7 +3403,7 @@ bool BluetoothGattProfileService::removeLocalService(const BluetoothUuid &uuid, 
 		if (service == nullptr)
 			continue;
 
-		auto callback = [this, server, uuid](BluetoothError error) {
+		auto callback = [server, uuid](BluetoothError error) {
 			server->removeLocalService(uuid);
 		};
 		BT_DEBUG("[%s](%d) getImpl->removeService\n", __FUNCTION__, __LINE__);
@@ -4168,7 +4167,7 @@ void BluetoothGattProfileService::connectToStack(LS::Message &request, pbnjson::
 		markDeviceAsConnecting(adapterAddress,address);
 		notifyStatusSubscribers(adapterAddress, address, false);
 
-		auto connectCallback = [this, requestMessage, appId, adapterAddress, address, autoConnect](BluetoothError error, uint16_t connectId) {
+		auto connectCallback = [this, requestMessage, appId, adapterAddress, address](BluetoothError error, uint16_t connectId) {
 			LS::Message request(requestMessage);
 			bool subscribed = false;
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -113,7 +113,8 @@ void write_kernel_log(const char *message)
 	}
 
 	std::strncat(buffer, message, sizeof(buffer)-1);
-	write(fd, buffer, strlen(buffer)+1);
+	auto ret = write(fd, buffer, strlen(buffer)+1);
+	static_cast<void>(ret);
 	close(fd);
 }
 
@@ -163,7 +164,8 @@ bool changeGroup(const std::string &groupName, const std::string &fileName)
 		return false;
 
 	std::string command = "chgrp " + groupName + " " + testfileName;
-	system(command.c_str());
+	auto ret = system(command.c_str());
+	static_cast<void>(ret);
 	return true;
 
 }
@@ -182,7 +184,8 @@ bool changeFilePermission(const std::string &permission, const std::string &file
 		return false;
 
 	std::string command = "chmod " + permission + " " + testfileName;
-	system(command.c_str());
+	auto ret = system(command.c_str());
+	static_cast<void>(ret);
 	return true;
 }
 
@@ -200,7 +203,8 @@ bool changeFolderPermission(const std::string &permission, const std::string &fo
 		return false;
 
 	std::string command = "chmod -R " + permission + " " + testfolderName;
-	system(command.c_str());
+	auto ret = system(command.c_str());
+	static_cast<void>(ret);
 	return true;
 }
 
@@ -218,7 +222,8 @@ bool changeFolderGroup(const std::string &groupName, const std::string &folderNa
 		return false;
 
 	std::string command = "chgrp -R " + groupName + " " + testfolderName;
-	system(command.c_str());
+	auto ret = system(command.c_str());
+        static_cast<void>(ret);
 	return true;
 
 }
