@@ -1248,11 +1248,7 @@ bool BluetoothMeshProfileService::receive(LSMessage &message)
 	if (bearer.compare("PB-ADV") == 0 || bearer.compare("PB-GATT") == 0)
 	{
 		LS::SubscriptionPoint *subscriptionPoint = 0;
-		//Todo: enable this later
-		//uint16_t appKey = (uint16_t)requestObj["appKeyIndex"].asNumber<int32_t>();
-		//Todo: Remode this later
-		//Adding same appkey will give response to all the apis
-		uint16_t appKey = 0xffff;
+		uint16_t appKey = (uint16_t)requestObj["appKeyIndex"].asNumber<int32_t>();
 		auto modelAppKeySubsIter = recvSubscriptions.find(appKey);
 		if (modelAppKeySubsIter == recvSubscriptions.end())
 		{
