@@ -27,13 +27,6 @@
 
 #include "bluetoothprofileservice.h"
 
-#define DELETE_OBJ(del_obj) \
-	if (del_obj)            \
-	{                       \
-		delete del_obj;     \
-		del_obj = 0;        \
-	}
-
 namespace pbnjson
 {
 	class JValue;
