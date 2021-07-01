@@ -25,6 +25,10 @@
 #include "utils.h"
 #include "bluetoothclientwatch.h"
 
+#define LOCAL_NODE_ADDRESS		1
+#define MIN_NODE_ADDRESS		1
+#define MAX_NODE_ADDRESS		32767
+
 BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService *manager) :
 BluetoothProfileService(manager, "MESH", "00001827-0000-1000-8000-00805f9b34fb"),
 mNetworkCreated(0),
@@ -39,6 +43,8 @@ mAppKeyIndex(0)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, supplyProvisioningNumeric)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, createAppKey)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, getMeshInfo)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, listProvisionedNodes)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, removeNode)
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothMeshProfileService, modelconfig)
@@ -164,7 +170,11 @@ void BluetoothMeshProfileService::initialize(const std::string &adapterAddress)
 			pbnjson::JValue meshEntry = results[i];
 			if (meshEntry.hasKey("unicastAddress"))
 			{
-				unicastAddresses.push_back((uint16_t)meshEntry["unicastAddress"].asNumber<int32_t>());
+				uint16_t uincastAddress = (uint16_t)meshEntry["unicastAddress"].asNumber<int32_t>();
+				for (int i = 0; i < meshEntry["count"].asNumber<int32_t>(); ++i)
+				{
+					unicastAddresses.push_back(uincastAddress + i);
+				}
 			}
 		}
 		getImpl<BluetoothMeshProfile>(adapterAddress)->updateNodeInfo("PB-ADV", unicastAddresses);
@@ -398,8 +408,16 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 			else if (config == "APPKEYINDEX")
 			{
 				object.put("appKeyIndexes", appendAppKeyIndexes(configuration.getAppKeyIndexes()));
+				LSUtils::callDb8UpdateAppkey(getManager(), configuration.getNodeAddress(), configuration.getAppKeyIndexes());
 			}
-
+			else if (config == "APPKEY_ADD")
+			{
+				updateAppkeyList(configuration.getNodeAddress(),configuration.getAppKeyIndex());
+			}
+			else if (config == "APPKEY_DELETE")
+			{
+				updateAppkeyList(configuration.getNodeAddress(),configuration.getAppKeyIndex(), true);
+			}
 			LSUtils::postToClient((*watch)->getMessage(), object);
 			delete (*watch);
 			watch = mModelConfigResultWatch.erase(watch);
@@ -1338,12 +1356,10 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 				if (BLUETOOTH_ERROR_NONE == error)
 				{
 					object.put("unicastAddress", unicastAddress);
-					for (int i = 0; i < count; ++i)
+					if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress, deviceUUID, count))
 					{
-						if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress + i))
-						{
-							BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress + i);
-						}
+						BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress);
+
 					}
 					removeFromDeviceList(adapterAddress, deviceUUID);
 				}
@@ -1968,4 +1984,284 @@ pbnjson::JValue BluetoothMeshProfileService::appendProvisioners()
 	object.put("unicastAddress",0001);
 	platformObjArr.append(object);
 	return platformObjArr;
+}
+
+bool BluetoothMeshProfileService::listProvisionedNodes(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_2(PROP(adapterAddress, string),
+													 PROP(bearer, string)));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+
+		if(bearer != "PB-GATT" && bearer != "PB-ADV")
+		{
+			LSUtils::respondWithError(request, BLUETOOTH_ERROR_PARAM_INVALID);
+			return true;
+		}
+	}
+
+	if(bearer == "PB-GATT")
+	{
+		LSUtils::respondWithError(request, BLUETOOTH_ERROR_UNSUPPORTED);
+		return true;
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("nodes", appendNodesInfo());
+	LSUtils::postToClient(request, responseObj);
+	return true;
+
+}
+
+pbnjson::JValue BluetoothMeshProfileService::appendNodesInfo()
+{
+	/*Get node info from db */
+	pbnjson::JValue nodeInfo;
+	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
+	pbnjson::JValue results = nodeInfo["results"];
+	pbnjson::JValue nodeObjectArr = pbnjson::Array();
+
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue meshEntry = results[i];
+			if (meshEntry.hasKey("unicastAddress"))
+			{
+				pbnjson::JValue object = pbnjson::Object();
+				object.put("primaryElementAddress",meshEntry["unicastAddress"].asNumber<int32_t>());
+				object.put("uuid", meshEntry["uuid"].asString());
+				object.put("numberOfElements", meshEntry["count"].asNumber<int32_t>());
+				object.put("netKeyIndex", meshEntry["netKeyIndex"].asNumber<int32_t>());
+				object.put("appKeyIndexes", meshEntry["appKeyIndexes"]);
+				nodeObjectArr.append(object);
+			}
+		}
+	}
+	return nodeObjectArr;
+}
+
+bool BluetoothMeshProfileService::removeNode(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_3(PROP(adapterAddress, string),
+													 PROP(bearer, string), PROP(primaryElementAddress, integer)) REQUIRED_1(primaryElementAddress));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!requestObj.hasKey("primaryElementAddress"))
+			LSUtils::respondWithError(request, BT_ERR_MESH_PRIMARY_ELEMENT_ADDRESS_PARAM_MISSING);
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	uint16_t unicastAddress = (uint16_t)requestObj["primaryElementAddress"].asNumber<int32_t>();
+	BT_INFO("MESH", 0, "primaryElementAddress :%d", unicastAddress);
+
+	if(unicastAddress == LOCAL_NODE_ADDRESS)
+	{
+		BT_ERROR("MESH", 0, "Removing local node not allowed");
+		LSUtils::respondWithError(request, BT_ERR_MESH_NODE_ADDRESS_INVALID);
+		return true;
+	}
+
+	if(!(MIN_NODE_ADDRESS <= unicastAddress && unicastAddress <= MAX_NODE_ADDRESS))
+	{
+		BT_ERROR("MESH", 0, "primaryElementAddress is out of range, valid range: %d to %d", MIN_NODE_ADDRESS, MAX_NODE_ADDRESS);
+		LSUtils::respondWithError(request, BT_ERR_MESH_NODE_ADDRESS_INVALID);
+		return true;
+	}
+
+	if (!isValidUnicastAddress(unicastAddress))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NODE_ADDRESS_INVALID);
+		return true;
+	}
+
+	uint8_t count = getElementCount(unicastAddress);
+
+	BluetoothError error = impl->deleteNode(bearer, unicastAddress, count);
+
+	if (BLUETOOTH_ERROR_NONE != error)
+	{
+		LSUtils::respondWithError(request, error);
+		return true;
+	}
+
+	if(!LSUtils::callDb8MeshDeleteNode(getManager(), unicastAddress))
+	{
+		BT_ERROR("MESH", 0, "Db8 delete node failed");
+	}
+
+	pbnjson::JValue responseObj = pbnjson::Object();
+	responseObj.put("returnValue", true);
+	responseObj.put("adapterAddress", adapterAddress);
+	responseObj.put("primaryElementAddress", unicastAddress);
+	LSUtils::postToClient(request, responseObj);
+	return true;
+
+}
+
+bool BluetoothMeshProfileService::isValidUnicastAddress(uint16_t unicastAddress)
+{
+
+	if(unicastAddress == LOCAL_NODE_ADDRESS)
+		return true;
+
+	/*Get node info from db */
+	pbnjson::JValue nodeInfo;
+	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
+	pbnjson::JValue results = nodeInfo["results"];
+
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue meshEntry = results[i];
+			if (meshEntry.hasKey("unicastAddress"))
+			{
+				if(unicastAddress == meshEntry["unicastAddress"].asNumber<int32_t>())
+					return true;
+			}
+		}
+	}
+	return false;
+}
+
+uint8_t BluetoothMeshProfileService::getElementCount(uint16_t unicastAddress)
+{
+	/*Get node info from db */
+	pbnjson::JValue nodeInfo;
+	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
+	pbnjson::JValue results = nodeInfo["results"];
+
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue meshEntry = results[i];
+			if (meshEntry.hasKey("unicastAddress"))
+			{
+				if(unicastAddress == meshEntry["unicastAddress"].asNumber<int32_t>())
+				{
+					return meshEntry["count"].asNumber<int32_t>();
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+void BluetoothMeshProfileService::updateAppkeyList(uint16_t unicastAddress, uint16_t appKeyIndex, bool remove)
+{
+	BT_DEBUG("unicastAddress: %d, appKeyIndex: %d remove: %d", unicastAddress, appKeyIndex, remove);
+
+	pbnjson::JValue nodeInfo;
+	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
+	pbnjson::JValue results = nodeInfo["results"];
+
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue meshEntry = results[i];
+			if(unicastAddress == meshEntry["unicastAddress"].asNumber<int32_t>())
+			{
+				if (meshEntry.hasKey("appKeyIndexes"))
+				{
+					std::vector<uint16_t> appKeyIndexesList;
+					auto appKeyIndexesObjArray = meshEntry["appKeyIndexes"];
+					for (int n = 0; n < appKeyIndexesObjArray.arraySize(); n++)
+					{
+						pbnjson::JValue element = appKeyIndexesObjArray[n];
+						appKeyIndexesList.push_back(element.asNumber<int32_t>());
+					}
+
+					auto findIter = std::find(appKeyIndexesList.begin(), appKeyIndexesList.end(), appKeyIndex);
+					if(remove)
+					{
+						if (findIter == appKeyIndexesList.end())
+							return;
+						appKeyIndexesList.erase(findIter);
+					}
+					else
+					{
+						if (findIter != appKeyIndexesList.end())
+							return;
+						appKeyIndexesList.push_back(appKeyIndex);
+					}
+					LSUtils::callDb8UpdateAppkey(getManager(), unicastAddress, appKeyIndexesList);
+				}
+			}
+		}
+	}
 }

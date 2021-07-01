@@ -217,14 +217,19 @@ bool LSUtils::callDb8MeshGetNodeInfo(LS::Handle *serviceHandle, pbnjson::JValue 
 	return true;
 
 }
-bool LSUtils::callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicastAddress)
+bool LSUtils::callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicastAddress, const std::string &uuid, uint8_t count)
 {
 	pbnjson::JValue objArray = pbnjson::Array();
 	pbnjson::JValue nodeInfoObj = pbnjson::Object();
 	pbnjson::JValue reqObj = pbnjson::Object();
+	pbnjson::JValue appKeyIndexesObjArr = pbnjson::Array();
 
 	nodeInfoObj.put("_kind", "com.webos.service.bluetooth2.meshnodeinfo:1");
 	nodeInfoObj.put("unicastAddress", unicastAddress);
+	nodeInfoObj.put("uuid", uuid);
+	nodeInfoObj.put("count", count);
+	nodeInfoObj.put("netKeyIndex", 0);
+	nodeInfoObj.put("appKeyIndexes", appKeyIndexesObjArr);
 	objArray.append(nodeInfoObj);
 	reqObj.put("objects", objArray);
 
@@ -242,3 +247,140 @@ bool LSUtils::callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicast
 	return true;
 }
 
+std::string LSUtils::getObjectID(LS::Handle *serviceHandle, uint16_t unicastAddress)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/find",
+											"{\"query\":{ \"from\":\"com.webos.service.bluetooth2.meshnodeinfo:1\"}}").get();
+  std::string id;
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		BT_INFO("MESH", 0, "Db8 find API returned error: %d==%s : [%s : %d]",
+			replyObj["errorCode"].asNumber<int32_t>(), replyObj["errorText"].asString().c_str(),
+			__FUNCTION__, __LINE__);
+		return id;
+	}
+
+	BT_DEBUG("replyObj: %s", replyObj.stringify().c_str());
+	pbnjson::JValue resultsObj = pbnjson::Array();
+	pbnjson::JValue results = replyObj["results"];
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			if (results[i].hasKey("unicastAddress"))
+			{
+				pbnjson::JValue meshEntry = results[i];
+				if(unicastAddress == meshEntry["unicastAddress"].asNumber<int32_t>())
+				{
+					return meshEntry["_id"].asString();
+				}
+			}
+		}
+	}
+	return id;
+}
+
+bool LSUtils::callDb8MeshDeleteNode(LS::Handle *serviceHandle, uint16_t unicastAddress)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	std::string id =  getObjectID(serviceHandle, unicastAddress);
+	if(id.empty())
+	{
+		BT_INFO("MESH", 0, "unicastAddress is not present in db: %d", unicastAddress);
+		return true;
+	}
+
+	bool returnValue = callDb8DeleteId(serviceHandle, id);
+	if (!returnValue)
+	{
+		BT_INFO("MESH", 0, "delete id from db failed: %s", id.c_str());
+		return false;
+	}
+
+	BT_INFO("MESH", 0, "delete id from db success: %s", id.c_str());
+	return true;
+}
+
+bool LSUtils::callDb8DeleteId(LS::Handle *serviceHandle, const std::string &id)
+{
+
+	pbnjson::JValue objArray = pbnjson::Array();
+	pbnjson::JValue nodeInfoObj = pbnjson::Object();
+	pbnjson::JValue reqObj = pbnjson::Object();
+
+	objArray.append(id);
+	reqObj.put("ids", objArray);
+
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/del",
+											reqObj.stringify().c_str()).get();
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		return false;
+	}
+	return true;
+}
+
+bool LSUtils::callDb8UpdateAppkey(LS::Handle *serviceHandle, uint16_t unicastAddress, std::vector<uint16_t> appKeyIndexes)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	std::string id =  getObjectID(serviceHandle, unicastAddress);
+	if(id.empty())
+	{
+		BT_INFO("MESH", 0, "unicastAddress is not present in db: %d", unicastAddress);
+		return true;
+	}
+	bool returnValue = callDb8UpdateId(serviceHandle, id, appKeyIndexes);
+	if (!returnValue)
+	{
+		BT_INFO("MESH", 0, "Update appkeys for unicastAddress %d failed", unicastAddress);
+		return false;
+	}
+
+	BT_INFO("MESH", 0, "Update appkeys for unicastAddress %d success", unicastAddress);
+	return true;
+}
+
+bool LSUtils::callDb8UpdateId(LS::Handle *serviceHandle, const std::string &id, std::vector<uint16_t> appKeyIndexes)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+
+	pbnjson::JValue objArray = pbnjson::Array();
+	pbnjson::JValue tokenObj = pbnjson::Object();
+	pbnjson::JValue reqObj = pbnjson::Object();
+
+	pbnjson::JValue appKeyIndexesArray = pbnjson::Array();
+
+	for (unsigned int i = 0; i < appKeyIndexes.size(); i++)
+		appKeyIndexesArray.append(appKeyIndexes[i]);
+
+
+	tokenObj.put("_id", id);
+	tokenObj.put("appKeyIndexes", appKeyIndexesArray);
+	objArray.append(tokenObj);
+	reqObj.put("objects", objArray);
+
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/merge",
+											reqObj.stringify().c_str()).get();
+
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		return false;
+	}
+	return true;
+}

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020 LG Electronics, Inc.
+// Copyright (c) 2014-2021 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -253,7 +253,9 @@ enum BluetoothErrorCode
 	BT_ERR_MESH_CONFIG_PARAM_MISSING = 329,
 	BT_ERR_MESH_RELAY_PARAM_MISSING = 330,
 	BT_ERR_MESH_RETRANSMIT_COUNT_PARAM_MISSING = 331,
-	BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING = 332
+	BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING = 332,
+	BT_ERR_MESH_NODE_ADDRESS_INVALID = 333,
+	BT_ERR_MESH_PRIMARY_ELEMENT_ADDRESS_PARAM_MISSING = 334
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode);

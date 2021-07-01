@@ -21,7 +21,8 @@
         "com.webos.service.bluetooth2/opp/getStatus",
         "com.webos.service.bluetooth2/mesh/model/config/get",
         "com.webos.service.bluetooth2/mesh/model/config/getCompositionData",
-        "com.webos.service.bluetooth2/mesh/getMeshInfo"
+        "com.webos.service.bluetooth2/mesh/getMeshInfo",
+        "com.webos.service.bluetooth2/mesh/listProvisionedNodes"
     ],
     "bluetooth.operation": [
         "com.webos.service.bluetooth2/gatt/addService",
@@ -161,7 +162,8 @@
         "com.webos.service.bluetooth2/opp/disconnect",
         "com.webos.service.bluetooth2/opp/monitorTransfer",
         "com.webos.service.bluetooth2/opp/pushFile",
-        "com.webos.service.bluetooth2/opp/rejectTransferRequest"
+        "com.webos.service.bluetooth2/opp/rejectTransferRequest",
+        "com.webos.service.bluetooth2/mesh/removeNode"
     ],
     "bluetooth.devutility": [
         "com.webos.service.bluetooth2/adapter/internal/getKeepAliveStatus",

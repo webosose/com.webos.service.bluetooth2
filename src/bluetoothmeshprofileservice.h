@@ -69,7 +69,8 @@ public:
 	bool receive(LSMessage &message);
 	bool getCompositionData(LSMessage &message);
 	bool getMeshInfo(LSMessage &message);
-
+	bool listProvisionedNodes(LSMessage &message);
+	bool removeNode(LSMessage &message);
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
 	void modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
@@ -107,14 +108,17 @@ private:
 	bool removeFromDeviceList(const std::string &adapterAddress, const std::string &uuid);
 	/* Returns true if app key already active */
 	bool isAppKeyExist(uint16_t appKeyIndex);
+	bool isValidUnicastAddress(uint16_t unicastAddress);
 	/* Returns true if application is authorized to use the particular app key index */
 	bool isValidApplication(uint16_t appKeyIndex, LS::Message &request);
+	uint8_t getElementCount(uint16_t unicastAddress);
 	pbnjson::JValue appendAppKeyIndexes(std::vector<uint16_t> appKeyList);
 	pbnjson::JValue appendMeshInfo();
 	pbnjson::JValue appendNetKeys();
 	pbnjson::JValue appendAppKeys();
 	pbnjson::JValue appendProvisioners();
-
+	pbnjson::JValue appendNodesInfo();
+	void updateAppkeyList(uint16_t unicastAddress, uint16_t appKeyIndex, bool remove = false);
 	bool addSubscription(LS::Message &request, const std::string &adapterAddress, const std::string &config,
 													uint16_t unicastAddress);
 private:

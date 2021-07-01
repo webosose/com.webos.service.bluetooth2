@@ -22,6 +22,7 @@
 #include <pbnjson.hpp>
 #include <luna-service2/lunaservice.hpp>
 #include "bluetootherrors.h"
+#include <vector>
 
 #define LS_CATEGORY_TABLE_NAME(name) name##_table
 
@@ -227,8 +228,12 @@ bool callDb8MeshPutAppKey(LS::Handle *serviceHandle, uint16_t appKeyInex,
 							const std::string &appName);
 bool callDb8MeshGetAppKeys(LS::Handle *serviceHandle, pbnjson::JValue &result);
 bool callDb8MeshGetNodeInfo(LS::Handle *serviceHandle, pbnjson::JValue &result);
-bool callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicastAddress);
-
+bool callDb8MeshPutNodeInfo(LS::Handle *serviceHandle, uint16_t unicastAddress, const std::string &uuid, uint8_t count);
+bool callDb8MeshDeleteNode(LS::Handle *serviceHandle, uint16_t unicastAddress);
+bool callDb8DeleteId(LS::Handle *serviceHandle, const std::string &id);
+bool callDb8UpdateAppkey(LS::Handle *serviceHandle, uint16_t unicastAddress, std::vector<uint16_t> appKeyIndexes);
+std::string getObjectID(LS::Handle *serviceHandle, uint16_t unicastAddress);
+bool callDb8UpdateId(LS::Handle *serviceHandle, const std::string &id, std::vector<uint16_t> appKeyIndexes);
 } // namespace LSUtils
 
 #endif

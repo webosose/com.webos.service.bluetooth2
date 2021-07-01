@@ -302,7 +302,9 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MESH_CONFIG_PARAM_MISSING, "Required 'config' parameter missing"},
 	{BT_ERR_MESH_RELAY_PARAM_MISSING, "Required 'relay' parameter missing"},
 	{BT_ERR_MESH_RETRANSMIT_COUNT_PARAM_MISSING, "Required 'retransmitCount' parameter missing"},
-	{BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING, "Required 'retransmitIntervalSteps' parameter missing"}
+	{BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING, "Required 'retransmitIntervalSteps' parameter missing"},
+	{BT_ERR_MESH_NODE_ADDRESS_INVALID, "Supplied node Address does not exist or is invalid"},
+	{BT_ERR_MESH_PRIMARY_ELEMENT_ADDRESS_PARAM_MISSING, "Required 'primaryElementAddress' parameter missing"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)
