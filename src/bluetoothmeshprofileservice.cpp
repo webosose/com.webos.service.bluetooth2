@@ -777,8 +777,8 @@ bool BluetoothMeshProfileService::provision(LSMessage &message)
 	}
 
 	/* Need not check if the method is subscribed. This method need to be
-     * subscribed, else schema check will return error
-     */
+	 * subscribed, else schema check will return error
+	 */
 	bool retVal = addClientWatch(request, &mProvResultWatch,
 								 adapterAddress, "");
 	if (!retVal)
@@ -1587,25 +1587,30 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 
 	std::string config = requestObj["config"].asString();
 
-	if(config == "APPKEY_ADD" || config == "APPKEY_UPDATE")
+	if (config == "APPKEY_ADD" || config == "APPKEY_UPDATE" ||
+			config == "APPKEY_DELETE")
 	{
 		if (!requestObj.hasKey("netKeyIndex"))
 		{
-			LSUtils::respondWithError(request, BT_ERR_MESH_NET_KEY_INDEX_PARAM_MISSING);
+			LSUtils::respondWithError(request,
+									  BT_ERR_MESH_NET_KEY_INDEX_PARAM_MISSING);
 			return true;
-		}
+		 }
 	}
 
-	if(config == "APPKEY_ADD" || config == "APPKEY_UPDATE" || config == "APPKEY_BIND")
+	if (config == "APPKEY_ADD" || config == "APPKEY_UPDATE" ||
+			config == "APPKEY_BIND" || config == "APPKEY_DELETE" ||
+			config == "APPKEY_UNBIND")
 	{
 		if (!requestObj.hasKey("appKeyIndex"))
 		{
-			LSUtils::respondWithError(request, BT_ERR_MESH_APP_KEY_INDEX_PARAM_MISSING);
+			LSUtils::respondWithError(request,
+									  BT_ERR_MESH_APP_KEY_INDEX_PARAM_MISSING);
 			return true;
 		}
 	}
 
-	if(config == "APPKEY_BIND")
+	if(config == "APPKEY_BIND" || config == "APPKEY_UNBIND")
 	{
 		if (!requestObj.hasKey("modelId"))
 		{
