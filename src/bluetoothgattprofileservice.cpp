@@ -2435,9 +2435,10 @@ bool BluetoothGattProfileService::monitorCharacteristics(LSMessage &message)
 	}
 
 	MonitorCharacteristicSubscriptionInfo subscriptionInfo;
+	subscriptionInfo.handle = 0;
 	if (!deviceAddress.empty())
 		subscriptionInfo.deviceAddress = deviceAddress;
-  subscriptionInfo.adapterAddress = adapterAddress;
+	subscriptionInfo.adapterAddress = adapterAddress;
 	subscriptionInfo.serviceUuid = serviceUuid;
 	subscriptionInfo.characteristicUuids = characteristics;
 
@@ -3181,6 +3182,11 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 	// afterwards. If we receive it while still in the call and don't have the item
 	// added yet we will never tell our caller the result of the operation.
 	LocalService* newService = new LocalService;
+	if (newService == nullptr)
+	{
+		BT_DEBUG("[%s] Fail to Initialize memory for LocalService", __FUNCTION__);
+		return;
+	}
 	newService->desc = service; // TODO: Change to pointer assign
 	newService->addServiceCallback = callback;
 

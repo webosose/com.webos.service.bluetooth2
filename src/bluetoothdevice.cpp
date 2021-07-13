@@ -43,7 +43,8 @@ BluetoothDevice::BluetoothDevice(BluetoothPropertiesList &properties) :
 	mBlocked(false),
 	mConnected(false),
 	mRssi(0),
-	mRole(BLUETOOTH_DEVICE_ROLE)
+	Role(BLUETOOTH_DEVICE_ROLE),
+	mAccessCode(InquiryAccessCode::BT_ACCESS_CODE_NONE)
 {
 	update(properties);
 }

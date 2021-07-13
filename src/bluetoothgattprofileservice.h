@@ -185,7 +185,8 @@ class BluetoothGattProfileService : public BluetoothProfileService,
 		LocalService() :
 			id(0),
 			started(false),
-			itemsLeftToRegister(0)
+			itemsLeftToRegister(0),
+			addServiceCallback(0)
 		{
 		}
 
