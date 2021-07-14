@@ -3187,6 +3187,7 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 		BT_DEBUG("[%s] Fail to Initialize memory for LocalService", __FUNCTION__);
 		return;
 	}
+	newService->addServiceCallback = nullptr;
 	newService->desc = service; // TODO: Change to pointer assign
 	newService->addServiceCallback = callback;
 
