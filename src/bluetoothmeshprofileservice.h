@@ -85,7 +85,7 @@ public:
 								 uint8_t count = 0,
 								 const std::string &uuid = "");
 	void modelDataReceived(const std::string &adapterAddress,
-									   uint16_t srcAddress, uint16_t destAddress,
+									   uint16_t nodeAddress, uint16_t destAddress,
 									   uint16_t appKey, uint8_t data[], uint32_t datalen);
 
 private:
@@ -109,13 +109,14 @@ private:
 	bool isAppKeyExist(uint16_t appKeyIndex);
 	/* Returns true if application is authorized to use the particular app key index */
 	bool isValidApplication(uint16_t appKeyIndex, LS::Message &request);
-	void setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
 	pbnjson::JValue appendAppKeyIndexes(std::vector<uint16_t> appKeyList);
 	pbnjson::JValue appendMeshInfo();
 	pbnjson::JValue appendNetKeys();
 	pbnjson::JValue appendAppKeys();
 	pbnjson::JValue appendProvisioners();
 
+	bool addSubscription(LS::Message &request, const std::string &adapterAddress, const std::string &config,
+													uint16_t unicastAddress);
 private:
 	typedef struct device
 	{
@@ -129,10 +130,7 @@ private:
 	std::list<BluetoothClientWatch *> mModelOnOffResultWatch;
 	std::list<BluetoothClientWatch *> mNetworkIdWatch;
 	std::list<BluetoothClientWatch *> mProvResultWatch;
-	std::list<BluetoothClientWatch *> mGetModelConfigResultWatch;
-	std::list<BluetoothClientWatch *> mSetModelConfigResultWatch;
-	std::list<BluetoothClientWatch *> mCompositionDataWatch;
-	//std::list<BluetoothClientWatch *> mReceiveWatch;
+	std::list<BluetoothClientWatch *> mModelConfigResultWatch;
 	/* map<adapterAddress, map<uuid, UnprovisionedDeviceInfo>> */
 	std::unordered_map<std::string, std::map<std::string, UnprovisionedDeviceInfo>> mUnprovisionedDevices;
 	std::map<uint16_t, LS::SubscriptionPoint*> recvSubscriptions;

@@ -71,6 +71,40 @@ mAppKeyIndex(0)
 
 BluetoothMeshProfileService::~BluetoothMeshProfileService()
 {
+	for (auto iter = mScanResultWatch.begin();
+		 iter != mScanResultWatch.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mScanResultWatch.clear();
+
+	for (auto iter = mModelOnOffResultWatch.begin();
+		 iter != mModelOnOffResultWatch.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mModelOnOffResultWatch.clear();
+
+	for (auto iter = mNetworkIdWatch.begin();
+		 iter != mNetworkIdWatch.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mNetworkIdWatch.clear();
+
+	for (auto iter = mProvResultWatch.begin();
+		 iter != mProvResultWatch.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mProvResultWatch.clear();
+
+	for (auto iter = mModelConfigResultWatch.begin();
+		 iter != mModelConfigResultWatch.end(); iter++)
+	{
+		delete (*iter);
+	}
+	mModelConfigResultWatch.clear();
 }
 
 void BluetoothMeshProfileService::initialize()
@@ -122,6 +156,7 @@ void BluetoothMeshProfileService::initialize(const std::string &adapterAddress)
 	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
 	results = nodeInfo["results"];
 	std::vector<uint16_t> unicastAddresses;
+
 	if (results.isValid() && (results.arraySize() > 0))
 	{
 		for (int i = 0; i < results.arraySize(); ++i)
@@ -293,29 +328,6 @@ bool BluetoothMeshProfileService::scanUnprovisionedDevices(LSMessage &message)
 	return true;
 }
 
-void BluetoothMeshProfileService::setModelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error)
-{
-	BT_INFO("MESH", 0, "[%s : %d], mSetModelConfigResultWatch: %d", __FUNCTION__, __LINE__, mSetModelConfigResultWatch.size());
-	for (auto watch : mSetModelConfigResultWatch)
-	{
-		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
-		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
-		{
-			if (BLUETOOTH_ERROR_NONE != error)
-			{
-				LSUtils::respondWithError(watch->getMessage(), error);
-				return;
-			}
-			pbnjson::JValue object = pbnjson::Object();
-			object.put("subscribed", true);
-			object.put("returnValue", true);
-			object.put("adapterAddress", adapterAddress);
-			object.put("config", configuration.getConfig());
-			LSUtils::postToClient(watch->getMessage(), object);
-		}
-	}
-}
-
 void BluetoothMeshProfileService::modelSetOnOffResult(const std::string &adapterAddress, bool onOffState, BluetoothError error)
 {
 	for (auto watch : mModelOnOffResultWatch)
@@ -342,26 +354,34 @@ void BluetoothMeshProfileService::modelSetOnOffResult(const std::string &adapter
 void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error)
 {
 
-	BT_INFO("MESH", 0, "[%s : %d], getConfig: %s", __FUNCTION__, __LINE__, configuration.getConfig().c_str());
+	BT_INFO("MESH", 0, "[%s : %d], getConfig: %s srcAddress:%d \n", __FUNCTION__, __LINE__, configuration.getConfig().c_str(), configuration.getNodeAddress());
 
-	setModelConfigResult(adapterAddress, configuration, error);
+	std::string key = adapterAddress + configuration.getConfig() + std::to_string(configuration.getNodeAddress());
+
 	std::string config(configuration.getConfig());
 
-	for (auto watch : mGetModelConfigResultWatch)
+	auto watch = mModelConfigResultWatch.begin();
+	while (watch != mModelConfigResultWatch.end())
 	{
-		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->getAdapterAddress().c_str());
-		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		BT_INFO("MESH", 0, "key: %s --- %s", key.c_str(), (*watch)->getAdapterAddress().c_str());
+		if (convertToLower(key) == convertToLower((*watch)->getAdapterAddress()))
 		{
 			if (BLUETOOTH_ERROR_NONE != error)
 			{
-				LSUtils::respondWithError(watch->getMessage(), error);
+				LSUtils::respondWithError((*watch)->getMessage(), error, true);
 				return;
 			}
 			pbnjson::JValue object = pbnjson::Object();
-			object.put("subscribed", true);
+			object.put("subscribed", false);
 			object.put("returnValue", true);
 			object.put("adapterAddress", adapterAddress);
-			object.put("config", configuration.getConfig());
+
+			if (config == "COMPOSITION_DATA")
+			{
+				object.put("compositionData", appendCompositionData(configuration.getCompositionData()));
+			}
+			else
+				object.put("config", config);
 
 			if (config == "DEFAULT_TTL")
 			{
@@ -379,25 +399,14 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 			{
 				object.put("appKeyIndexes", appendAppKeyIndexes(configuration.getAppKeyIndexes()));
 			}
-			LSUtils::postToClient(watch->getMessage(), object);
+
+			LSUtils::postToClient((*watch)->getMessage(), object);
+			delete (*watch);
+			watch = mModelConfigResultWatch.erase(watch);
 		}
-	}
-	if (config == "COMPOSITION_DATA")
-	{
-		for (auto watch : mCompositionDataWatch)
-		if (convertToLower(adapterAddress) == convertToLower(watch->getAdapterAddress()))
+		else
 		{
-			if (BLUETOOTH_ERROR_NONE != error)
-			{
-				LSUtils::respondWithError(watch->getMessage(), error);
-				return;
-			}
-			pbnjson::JValue object = pbnjson::Object();
-			object.put("subscribed", true);
-			object.put("returnValue", true);
-			object.put("adapterAddress", adapterAddress);
-			object.put("compositionData", appendCompositionData(configuration.getCompositionData()));
-			LSUtils::postToClient(watch->getMessage(), object);
+			watch++;
 		}
 	}
 }
@@ -1513,10 +1522,16 @@ bool BluetoothMeshProfileService::get(LSMessage &message)
 		return true;
 	}
 
+	uint16_t unicastAddress;
+	if (requestObj.hasKey("destAddress"))
+	{
+		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
+	}
+
 	if(requestObj["subscribe"].asBool())
 	{
-		bool retVal = addClientWatch(request, &mGetModelConfigResultWatch,
-																adapterAddress, "");
+		bool retVal = addSubscription(request, adapterAddress, config, unicastAddress);
+
 		if (!retVal)
 		{
 			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
@@ -1538,7 +1553,7 @@ bool BluetoothMeshProfileService::get(LSMessage &message)
 		bearer = requestObj["bearer"].asString();
 	}
 
-	BluetoothError error = impl->configGet(bearer, requestObj["destAddress"].asNumber<int32_t>(), config, requestObj["netKeyIndex"].asNumber<int32_t>());
+	BluetoothError error = impl->configGet(bearer, unicastAddress, config, requestObj["netKeyIndex"].asNumber<int32_t>());
 
 	if (BLUETOOTH_ERROR_NONE != error)
 	{
@@ -1696,10 +1711,16 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 		}
 	}
 
+	uint16_t unicastAddress;
+	if (requestObj.hasKey("destAddress"))
+	{
+		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
+	}
+
 	if(requestObj["subscribe"].asBool())
 	{
-		bool retVal = addClientWatch(request, &mSetModelConfigResultWatch,
-																adapterAddress, "");
+		bool retVal = addSubscription(request, adapterAddress, config, unicastAddress);
+
 		if (!retVal)
 		{
 			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
@@ -1721,7 +1742,7 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 		bearer = requestObj["bearer"].asString();
 	}
 
-	BluetoothError error = impl->configSet(bearer, requestObj["destAddress"].asNumber<int32_t>(), config,
+	BluetoothError error = impl->configSet(bearer, unicastAddress, config,
 											requestObj["gattProxyState"].asNumber<int32_t>(),
 											requestObj["netKeyIndex"].asNumber<int32_t>(),
 											requestObj["appKeyIndex"].asNumber<int32_t>(),requestObj["modelId"].asNumber<int32_t>() ,
@@ -1740,6 +1761,13 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 
 	LSUtils::postToClient(request, responseObj);
 	return true;
+}
+
+bool BluetoothMeshProfileService::addSubscription(LS::Message &request, const std::string &adapterAddress, const std::string &config,
+													uint16_t unicastAddress)
+{
+	std::string key = adapterAddress + config + std::to_string(unicastAddress);
+	return addClientWatch(request, &mModelConfigResultWatch, key, "");
 }
 
 void BluetoothMeshProfileService::modelDataReceived(const std::string &adapterAddress,
@@ -1799,17 +1827,22 @@ bool BluetoothMeshProfileService::getCompositionData(LSMessage &message)
 		return true;
 	}
 
+	uint16_t unicastAddress;
+	if (requestObj.hasKey("destAddress"))
+	{
+		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
+	}
+
 	if(requestObj["subscribe"].asBool())
 	{
-		bool retVal = addClientWatch(request, &mCompositionDataWatch,
-																adapterAddress, "");
+		bool retVal = addSubscription(request, adapterAddress, "COMPOSITION_DATA", unicastAddress);
+
 		if (!retVal)
 		{
 			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
 			return true;
 		}
 	}
-
 
 	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
 	if (!impl)
@@ -1825,7 +1858,7 @@ bool BluetoothMeshProfileService::getCompositionData(LSMessage &message)
 		bearer = requestObj["bearer"].asString();
 	}
 
-	BluetoothError error = impl->getCompositionData(bearer, requestObj["destAddress"].asNumber<int32_t>());
+	BluetoothError error = impl->getCompositionData(bearer, unicastAddress);
 
 	if (BLUETOOTH_ERROR_NONE != error)
 	{
