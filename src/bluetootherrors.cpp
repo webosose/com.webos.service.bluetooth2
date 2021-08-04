@@ -68,7 +68,8 @@ static std::map<BluetoothError, std::string> bluetoothSILErrorText =
 	{BLUETOOTH_ERROR_MESH_OUT_OF_RESOURCES, "Out of resources"},
 	{BLUETOOTH_ERROR_MESH_DECRYPTION_ERROR, "Decryption error"},
 	{BLUETOOTH_ERROR_MESH_UNEXPECTED_ERROR, "Unexpected error"},
-	{BLUETOOTH_ERROR_MESH_CANNOT_ASSIGN_ADDRESSES, "Cannot assign addresses"}
+	{BLUETOOTH_ERROR_MESH_CANNOT_ASSIGN_ADDRESSES, "Cannot assign addresses"},
+	{BLUETOOTH_ERROR_MESH_NETKEY_UPDATE_FAILED, "Network key update failed"}
 };
 
 static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
@@ -304,7 +305,8 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MESH_RETRANSMIT_COUNT_PARAM_MISSING, "Required 'retransmitCount' parameter missing"},
 	{BT_ERR_MESH_RETRANSMIT_INTERVAL_STEPS_PARAM_MISSING, "Required 'retransmitIntervalSteps' parameter missing"},
 	{BT_ERR_MESH_NODE_ADDRESS_INVALID, "Supplied node Address does not exist or is invalid"},
-	{BT_ERR_MESH_PRIMARY_ELEMENT_ADDRESS_PARAM_MISSING, "Required 'primaryElementAddress' parameter missing"}
+	{BT_ERR_MESH_PRIMARY_ELEMENT_ADDRESS_PARAM_MISSING, "Required 'primaryElementAddress' parameter missing"},
+	{BT_ERR_MESH_KEY_REFRESH_IN_PROGRESS, "Key refresh is already in progress"}
 };
 
 void appendErrorResponse(pbnjson::JValue &obj, BluetoothError errorCode)

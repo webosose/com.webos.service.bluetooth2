@@ -71,6 +71,8 @@ public:
 	bool getMeshInfo(LSMessage &message);
 	bool listProvisionedNodes(LSMessage &message);
 	bool removeNode(LSMessage &message);
+	bool keyRefresh(LSMessage &message);
+
 	/* Mesh Observer APIs */
 	void scanResult(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name = "");
 	void modelConfigResult(const std::string &adapterAddress, BleMeshConfiguration &configuration, BluetoothError error);
@@ -88,6 +90,13 @@ public:
 	void modelDataReceived(const std::string &adapterAddress,
 									   uint16_t nodeAddress, uint16_t destAddress,
 									   uint16_t appKey, uint8_t data[], uint32_t datalen);
+	void keyRefreshResult(BluetoothError error,
+									const std::string &adapterAddress,
+									uint16_t netKeyIndex,
+									std::string &status,
+									uint16_t keyRefreshPhase,
+									uint16_t nodeAddress = 0,
+									uint16_t appKeyIndex = 0);
 
 private:
 	/* Private helper methods */
@@ -96,6 +105,9 @@ private:
 						std::string adapterAddress, std::string deviceAddress);
 	void handleClientDisappeared(std::list<BluetoothClientWatch *> *clientWatch,
 								 const std::string senderName);
+	void handleKeyRefreshClientDisappeared(
+					std::map<uint16_t, BluetoothClientWatch *> &keyRefreshWatch,
+					const uint16_t netKeyIndex);
 	void removeClientWatch(std::list<BluetoothClientWatch *> *clientWatch,
 						   const std::string &senderName);
 	bool updateDeviceList(const std::string &adapterAddress, const int16_t rssi, const std::string &uuid, const std::string &name);
@@ -121,6 +133,8 @@ private:
 	void updateAppkeyList(uint16_t unicastAddress, uint16_t appKeyIndex, bool remove = false);
 	bool addSubscription(LS::Message &request, const std::string &adapterAddress, const std::string &config,
 													uint16_t unicastAddress);
+	std::vector<BleMeshNode> getProvisionedNodes();
+
 private:
 	typedef struct device
 	{
@@ -144,6 +158,7 @@ private:
 	uint16_t mAppKeyIndex;
 
 	std::unordered_map<uint16_t, std::string> mAppKeys;
+	std::map<uint16_t, BluetoothClientWatch *> mKeyRefreshWatch;
 };
 
 #endif //BLUETOOTHMESHPROFILESERVICE_H

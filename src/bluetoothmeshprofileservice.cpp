@@ -28,6 +28,8 @@
 #define LOCAL_NODE_ADDRESS		1
 #define MIN_NODE_ADDRESS		1
 #define MAX_NODE_ADDRESS		32767
+/* default wait time in seconds */
+#define DEFAULT_WAIT_TIMEOUT 2
 
 BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService *manager) :
 BluetoothProfileService(manager, "MESH", "00001827-0000-1000-8000-00805f9b34fb"),
@@ -45,6 +47,7 @@ mAppKeyIndex(0)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, getMeshInfo)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, listProvisionedNodes)
 	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, removeNode)
+	LS_CATEGORY_CLASS_METHOD(BluetoothMeshProfileService, keyRefresh)
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothMeshProfileService, modelconfig)
@@ -228,6 +231,16 @@ void BluetoothMeshProfileService::handleClientDisappeared(std::list<BluetoothCli
 														  const std::string senderName)
 {
 	removeClientWatch(clientWatch, senderName);
+}
+
+void BluetoothMeshProfileService::handleKeyRefreshClientDisappeared(
+					std::map<uint16_t, BluetoothClientWatch *> &keyRefreshWatch,
+					const uint16_t netKeyIndex)
+{
+	auto watchIter = keyRefreshWatch.find(netKeyIndex);
+	BluetoothClientWatch *watch = watchIter->second;
+	delete(watch);
+	keyRefreshWatch.erase(netKeyIndex);
 }
 
 void BluetoothMeshProfileService::removeClientWatch(std::list<BluetoothClientWatch *> *clientWatch,
@@ -1359,7 +1372,6 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 					if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress, deviceUUID, count))
 					{
 						BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress);
-
 					}
 					removeFromDeviceList(adapterAddress, deviceUUID);
 				}
@@ -1732,7 +1744,6 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 	{
 		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
 	}
-
 	if(requestObj["subscribe"].asBool())
 	{
 		bool retVal = addSubscription(request, adapterAddress, config, unicastAddress);
@@ -2264,4 +2275,244 @@ void BluetoothMeshProfileService::updateAppkeyList(uint16_t unicastAddress, uint
 			}
 		}
 	}
+}
+
+bool BluetoothMeshProfileService::keyRefresh(LSMessage &message)
+{
+	LS::Message request(&message);
+	pbnjson::JValue requestObj;
+	int parseError = 0;
+
+	const std::string schema = STRICT_SCHEMA(PROPS_8(PROP(adapterAddress, string),
+												PROP(bearer, string),
+												PROP(subscribe, boolean),
+												PROP(netKeyIndex, integer),
+												PROP(refreshAppKeys, boolean),
+												PROP(waitTimeout, integer),
+												ARRAY(appKeyIndexes, integer),
+												ARRAY(blacklistedNodes, integer))
+												REQUIRED_1(subscribe));
+
+	if (!LSUtils::parsePayload(request.getPayload(), requestObj, schema, &parseError))
+	{
+		if (parseError != JSON_PARSE_SCHEMA_ERROR)
+			LSUtils::respondWithError(request, BT_ERR_BAD_JSON);
+		else if (!request.isSubscription())
+		{
+			LSUtils::respondWithError(request, BT_ERR_MTHD_NOT_SUBSCRIBED);
+		}
+		else
+			LSUtils::respondWithError(request, BT_ERR_SCHEMA_VALIDATION_FAIL);
+
+		return true;
+	}
+
+	std::string adapterAddress;
+	if (!getManager()->isRequestedAdapterAvailable(request, requestObj, adapterAddress))
+		return true;
+
+	BluetoothMeshProfile *impl = getImpl<BluetoothMeshProfile>(adapterAddress);
+	if (!impl)
+	{
+		LSUtils::respondWithError(request, BT_ERR_PROFILE_UNAVAIL);
+		return true;
+	}
+	if (!isNetworkCreated())
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_NETWORK_NOT_CREATED);
+		return true;
+	}
+
+	std::string bearer = "PB-ADV";
+
+	if (requestObj.hasKey("bearer"))
+	{
+		bearer = requestObj["bearer"].asString();
+	}
+	uint16_t netKeyIndex = 0;
+	if (requestObj.hasKey("netKeyIndex"))
+	{
+		netKeyIndex = (uint16_t)requestObj["netKeyIndex"].asNumber<int32_t>();
+	}
+	bool refreshAppKeys = false;
+	if (requestObj.hasKey("refreshAppKeys"))
+	{
+		refreshAppKeys = requestObj["refreshAppKeys"].asBool();
+	}
+	std::vector<uint16_t> appKeyIndexesToRefresh;
+	if (refreshAppKeys)
+	{
+		pbnjson::JValue indexes = pbnjson::Array();
+		if (requestObj.hasKey("appKeyIndexes"))
+		{
+			indexes = requestObj["appKeyIndexes"];
+		}
+		if (0 == indexes.arraySize())
+		{
+			for (auto appKeys : mAppKeys)
+			{
+				appKeyIndexesToRefresh.push_back(appKeys.first);
+			}
+		}
+		else
+		{
+			for (int i = 0; i < indexes.arraySize(); ++i)
+			{
+				if (mAppKeys.end() != mAppKeys.find(indexes[i].asNumber<int32_t>()))
+				{
+					appKeyIndexesToRefresh.push_back((uint16_t)indexes[i].asNumber<int32_t>());
+				}
+			}
+		}
+	}
+
+	/* Check if keyRefresh for the provided network index is already active */
+	if (mKeyRefreshWatch.end() != mKeyRefreshWatch.find(netKeyIndex))
+	{
+		LSUtils::respondWithError(request, BT_ERR_MESH_KEY_REFRESH_IN_PROGRESS);
+		return true;
+	}
+
+	std::vector<BleMeshNode> nodes = getProvisionedNodes();
+	std::vector<uint16_t> blackListedNodes;
+	if (requestObj.hasKey("blacklistedNodes"))
+	{
+		pbnjson::JValue blackListedNodesObj = requestObj["blacklistedNodes"];
+		for (int i = 0; i < blackListedNodesObj.arraySize(); ++i)
+		{
+			blackListedNodes.push_back((uint16_t)blackListedNodesObj[i].asNumber<int32_t>());
+		}
+	}
+	int32_t waitTimeout = DEFAULT_WAIT_TIMEOUT;
+	if (requestObj.hasKey("waitTimeout"))
+	{
+		waitTimeout = requestObj["waitTimeout"].asNumber<int32_t>();
+	}
+	auto watch = new BluetoothClientWatch(getManager()->get(), request.get(),
+										  std::bind(&BluetoothMeshProfileService::handleKeyRefreshClientDisappeared,
+													this, mKeyRefreshWatch, netKeyIndex),
+										  adapterAddress, "");
+	mKeyRefreshWatch.insert(std::pair<uint16_t, BluetoothClientWatch*>(netKeyIndex, watch));
+
+	LSMessage *requestMessage = request.get();
+	LSMessageRef(requestMessage);
+	auto keyRefreshCallback = [this, requestMessage, netKeyIndex, blackListedNodes, adapterAddress](BluetoothError error)
+	{
+		BT_INFO("MESH", 0, "keyRefreshCallback");
+		pbnjson::JValue responseObj = pbnjson::Object();
+		responseObj.put("returnValue", true);
+		responseObj.put("subscribed", true);
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(requestMessage, error, true);
+			handleKeyRefreshClientDisappeared(mKeyRefreshWatch, netKeyIndex);
+		}
+		else
+		{
+			responseObj.put("adapterAddress", adapterAddress);
+			for (int i = 0; i < blackListedNodes.size(); ++i)
+			{
+				if(!LSUtils::callDb8MeshDeleteNode(getManager(), blackListedNodes[i]))
+				{
+					BT_ERROR("MESH", 0, "Db8 delete node failed");
+				}
+			}
+			LSUtils::postToClient(requestMessage, responseObj);
+		}
+		LSMessageUnref(requestMessage);
+	};
+
+	impl->keyRefresh(keyRefreshCallback, bearer, refreshAppKeys,
+						appKeyIndexesToRefresh, blackListedNodes, nodes,
+						netKeyIndex, waitTimeout);
+	return true;
+}
+
+void BluetoothMeshProfileService::keyRefreshResult(BluetoothError error,
+									const std::string &adapterAddress,
+									uint16_t netKeyIndex,
+									std::string &status,
+									uint16_t keyRefreshPhase,
+									uint16_t nodeAddress,
+									uint16_t appKeyIndex)
+{
+	BT_INFO("MESH", 0, "[%s : %d]", __FUNCTION__, __LINE__);
+	auto watch = mKeyRefreshWatch.find(netKeyIndex);
+	/* There can be only once client for a key refresh for a given netKeyIndex */
+	if (watch != mKeyRefreshWatch.end())
+	{
+		pbnjson::JValue responseObj = pbnjson::Object();
+		BT_INFO("MESH", 0, "AdapterAddress: %s --- %s", adapterAddress.c_str(), watch->second->getAdapterAddress().c_str());
+		if (convertToLower(adapterAddress) == convertToLower(watch->second->getAdapterAddress()))
+		{
+			responseObj.put("status", status);
+			responseObj.put("subscribed", true);
+			responseObj.put("netKeyIndex", netKeyIndex);
+			responseObj.put("keyRefreshPhase", keyRefreshPhase);
+			responseObj.put("returnValue", true);
+			if ("completed" == status)
+			{
+				responseObj.put("subscribed", false);
+			}
+			if (BLUETOOTH_ERROR_NONE != error)
+			{
+				pbnjson::JValue keyUpdateResponseObj = pbnjson::Object();
+				keyUpdateResponseObj.put("primaryElementAddress", nodeAddress);
+				keyUpdateResponseObj.put("responseCode", error);
+				keyUpdateResponseObj.put("responseText", retrieveErrorCodeText(error));
+				if (BLUETOOTH_ERROR_MESH_CANNOT_UPDATE_APPKEY == error)
+				{
+					keyUpdateResponseObj.put("appKeyIndex", appKeyIndex);
+				}
+				else if (BLUETOOTH_ERROR_MESH_NETKEY_UPDATE_FAILED == error)
+				{
+					if (!LSUtils::callDb8MeshDeleteNode(getManager(), nodeAddress))
+					{
+						BT_ERROR("MESH", 0, "Db8 delete node failed");
+					}
+				}
+				else
+				{
+					LSUtils::respondWithError(watch->second->getMessage(), error);
+					return;
+				}
+				responseObj.put("keyUpdateResponse", keyUpdateResponseObj);
+			}
+			LSUtils::postToClient(watch->second->getMessage(), responseObj);
+			if ("completed" == status)
+			{
+				delete(watch->second);
+				mKeyRefreshWatch.erase(watch);
+			}
+		}
+	}
+
+}
+
+std::vector<BleMeshNode> BluetoothMeshProfileService::getProvisionedNodes()
+{
+	pbnjson::JValue nodeInfo;
+	std::vector<BleMeshNode> meshNodes;
+	LSUtils::callDb8MeshGetNodeInfo(getManager(), nodeInfo);
+	pbnjson::JValue results = nodeInfo["results"];
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			pbnjson::JValue result = results[i];
+			std::vector<uint16_t> appKeyIndexes;
+			pbnjson::JValue appKeyIndexesObj = result["appKeyIndexes"];
+			for (int j = 0; j < appKeyIndexesObj.arraySize(); ++j)
+			{
+				appKeyIndexes.push_back(appKeyIndexesObj[i].asNumber<int32_t>());
+			}
+			std::string uuid = result["uuid"].asString();
+			BleMeshNode node(uuid,
+				result["unicastAddress"].asNumber<int32_t>(),
+				result["count"].asNumber<int32_t>(),
+				result["netKeyIndex"].asNumber<int32_t>(), appKeyIndexes);
+			meshNodes.push_back(node);
+		}
+	}
+	return meshNodes;
 }

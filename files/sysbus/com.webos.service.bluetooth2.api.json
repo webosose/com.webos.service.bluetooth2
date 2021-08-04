@@ -163,7 +163,8 @@
         "com.webos.service.bluetooth2/opp/monitorTransfer",
         "com.webos.service.bluetooth2/opp/pushFile",
         "com.webos.service.bluetooth2/opp/rejectTransferRequest",
-        "com.webos.service.bluetooth2/mesh/removeNode"
+        "com.webos.service.bluetooth2/mesh/removeNode",
+        "com.webos.service.bluetooth2/mesh/keyRefresh"
     ],
     "bluetooth.devutility": [
         "com.webos.service.bluetooth2/adapter/internal/getKeepAliveStatus",
