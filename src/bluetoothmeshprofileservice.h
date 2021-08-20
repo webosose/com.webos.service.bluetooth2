@@ -135,6 +135,7 @@ private:
 													uint16_t unicastAddress);
 	std::vector<BleMeshNode> getProvisionedNodes();
 	void storeProvisionedDevice(uint16_t unicastAddress, const std::string &uuid, uint8_t count);
+	void applyCGroupSecurity(const std::string &folder);
 private:
 	typedef struct device
 	{

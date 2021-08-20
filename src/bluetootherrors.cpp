@@ -287,7 +287,7 @@ static std::map<BluetoothErrorCode, std::string> bluetoothErrorTextTable =
 	{BT_ERR_MESH_BEARER_PARAM_MISSING, "Required 'bearer' parameter missing"},
 	{BT_ERR_MESH_UUID_PARAM_MISSING, "Required 'uuid' parameter missing"},
 	{BT_ERR_MESH_DATA_PARAM_MISSING, "Required 'data' parameter missing"},
-	{BT_ERR_MESH_MODELID_PARAM_MISSING, "Requied 'modelId' paramerer missing"},
+	{BT_ERR_MESH_MODELID_PARAM_MISSING, "Required 'modelId' paramerer missing"},
 	{BT_ERR_MESH_TTL_PARAM_MISSING, "Required 'ttl' prameter missing"},
 	{BT_ERR_MESH_GATT_PROXY_STATE_PARAM_MISSING, "Required 'gattProxyState' parameter missing"},
 	{BT_ERR_MESH_HB_PUB_STATUS_PARAM_MISSING, "Required 'hbPubStatus' parameter missing"},

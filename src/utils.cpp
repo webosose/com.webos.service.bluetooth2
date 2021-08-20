@@ -223,7 +223,29 @@ bool changeFolderGroup(const std::string &groupName, const std::string &folderNa
 
 	std::string command = "chgrp -R " + groupName + " " + testfolderName;
 	auto ret = system(command.c_str());
-        static_cast<void>(ret);
+	static_cast<void>(ret);
 	return true;
 
+}
+
+/*all new files and subdirectories created within
+  the current directory inherit the group ID of the directory.
+*/
+bool setGroupID(const std::string &folderName)
+{
+	std::string testfolderName = folderName;
+
+	if (testfolderName.length() == 0)
+		return false;
+
+	if (g_file_test(folderName.c_str(), (GFileTest) G_FILE_TEST_IS_SYMLINK))
+		return false;
+
+	if (!g_file_test(testfolderName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
+		return false;
+
+	std::string command = "chmod g+s " + testfolderName;
+	auto ret = system(command.c_str());
+	static_cast<void>(ret);
+	return true;
 }

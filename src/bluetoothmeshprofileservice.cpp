@@ -29,7 +29,8 @@
 #define MIN_NODE_ADDRESS		1
 #define MAX_NODE_ADDRESS		32767
 /* default wait time in seconds */
-#define DEFAULT_WAIT_TIMEOUT 2
+#define DEFAULT_WAIT_TIMEOUT	2
+#define SECURE_KEY_STORAGE		"/var/lib/bluetooth/mesh/"
 
 BluetoothMeshProfileService::BluetoothMeshProfileService(BluetoothManagerService *manager) :
 BluetoothProfileService(manager, "MESH", "00001827-0000-1000-8000-00805f9b34fb"),
@@ -76,6 +77,8 @@ mAppKeyIndex(0)
 
 	manager->registerCategory("/mesh/model/onOff", LS_CATEGORY_TABLE_NAME(onOff), NULL, NULL);
 	manager->setCategoryData("/mesh/model/onOff", this);
+
+	applyCGroupSecurity(SECURE_KEY_STORAGE);
 }
 
 BluetoothMeshProfileService::~BluetoothMeshProfileService()
@@ -2515,5 +2518,28 @@ void BluetoothMeshProfileService::storeProvisionedDevice(uint16_t unicastAddress
 	if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress, uuid, count))
 	{
 		BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress);
+	}
+}
+
+void BluetoothMeshProfileService:: applyCGroupSecurity(const std::string &folder)
+{
+	BT_INFO("MESH", 0, "[%s : %d] Path:%s", __FUNCTION__, __LINE__, folder.c_str());
+
+	if(folder.empty())
+		return;
+
+	if (!changeFolderGroup("blemesh", folder))
+	{
+		BT_DEBUG("changing Group failed for %s", folder.c_str());
+	}
+
+	if (!changeFolderPermission("660", folder))
+	{
+		BT_DEBUG("changing FolderPermission failed for %s", folder.c_str());
+	}
+
+	if (!setGroupID(folder))
+	{
+		BT_DEBUG("setGroupID failed for %s", folder.c_str());
 	}
 }
