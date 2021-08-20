@@ -1369,10 +1369,7 @@ void BluetoothMeshProfileService::provisionResult(BluetoothError error, const st
 				if (BLUETOOTH_ERROR_NONE == error)
 				{
 					object.put("unicastAddress", unicastAddress);
-					if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress, deviceUUID, count))
-					{
-						BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress);
-					}
+					storeProvisionedDevice(unicastAddress, deviceUUID, count);
 					removeFromDeviceList(adapterAddress, deviceUUID);
 				}
 			}
@@ -2515,4 +2512,19 @@ std::vector<BleMeshNode> BluetoothMeshProfileService::getProvisionedNodes()
 		}
 	}
 	return meshNodes;
+}
+
+void BluetoothMeshProfileService::storeProvisionedDevice(uint16_t unicastAddress, const std::string &uuid, uint8_t count)
+{
+	std::string id =  LSUtils::getObjectIDByUUID(getManager(), uuid);
+
+	if(!id.empty() && !LSUtils::callDb8DeleteId(getManager(), id))
+	{
+		BT_INFO("MESH", 0, "delete id from db failed: %s", id.c_str());
+	}
+
+	if (!LSUtils::callDb8MeshPutNodeInfo(getManager(), unicastAddress, uuid, count))
+	{
+		BT_ERROR("MESH", 0, "Failed to store unicastAddresse: %d", unicastAddress);
+	}
 }

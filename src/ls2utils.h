@@ -233,6 +233,7 @@ bool callDb8MeshDeleteNode(LS::Handle *serviceHandle, uint16_t unicastAddress);
 bool callDb8DeleteId(LS::Handle *serviceHandle, const std::string &id);
 bool callDb8UpdateAppkey(LS::Handle *serviceHandle, uint16_t unicastAddress, std::vector<uint16_t> appKeyIndexes);
 std::string getObjectID(LS::Handle *serviceHandle, uint16_t unicastAddress);
+std::string getObjectIDByUUID(LS::Handle *serviceHandle, const std::string &uuid);
 bool callDb8UpdateId(LS::Handle *serviceHandle, const std::string &id, std::vector<uint16_t> appKeyIndexes);
 } // namespace LSUtils
 

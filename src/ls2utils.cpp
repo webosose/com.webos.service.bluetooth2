@@ -284,6 +284,44 @@ std::string LSUtils::getObjectID(LS::Handle *serviceHandle, uint16_t unicastAddr
 	return id;
 }
 
+std::string LSUtils::getObjectIDByUUID(LS::Handle *serviceHandle, const std::string &uuid)
+{
+	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);
+	auto reply = serviceHandle->callOneReply("luna://com.webos.service.db/find",
+											"{\"query\":{ \"from\":\"com.webos.service.bluetooth2.meshnodeinfo:1\"}}").get();
+  std::string id;
+	pbnjson::JValue replyObj = pbnjson::Object();
+	LSUtils::parsePayload(reply.getPayload(), replyObj);
+
+	bool returnValue = replyObj["returnValue"].asBool();
+	if (!returnValue)
+	{
+		BT_INFO("MESH", 0, "Db8 find API returned error: %d==%s : [%s : %d]",
+			replyObj["errorCode"].asNumber<int32_t>(), replyObj["errorText"].asString().c_str(),
+			__FUNCTION__, __LINE__);
+		return id;
+	}
+
+	BT_DEBUG("replyObj: %s", replyObj.stringify().c_str());
+	pbnjson::JValue resultsObj = pbnjson::Array();
+	pbnjson::JValue results = replyObj["results"];
+	if (results.isValid() && (results.arraySize() > 0))
+	{
+		for (int i = 0; i < results.arraySize(); ++i)
+		{
+			if (results[i].hasKey("uuid"))
+			{
+				pbnjson::JValue meshEntry = results[i];
+				if(uuid == meshEntry["uuid"].asString())
+				{
+					return meshEntry["_id"].asString();
+				}
+			}
+		}
+	}
+	return id;
+}
+
 bool LSUtils::callDb8MeshDeleteNode(LS::Handle *serviceHandle, uint16_t unicastAddress)
 {
 	BT_INFO("MESH", 0, "API is called : [%s : %d]", __FUNCTION__, __LINE__);

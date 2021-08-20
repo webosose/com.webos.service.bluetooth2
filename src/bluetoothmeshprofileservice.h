@@ -134,7 +134,7 @@ private:
 	bool addSubscription(LS::Message &request, const std::string &adapterAddress, const std::string &config,
 													uint16_t unicastAddress);
 	std::vector<BleMeshNode> getProvisionedNodes();
-
+	void storeProvisionedDevice(uint16_t unicastAddress, const std::string &uuid, uint8_t count);
 private:
 	typedef struct device
 	{
