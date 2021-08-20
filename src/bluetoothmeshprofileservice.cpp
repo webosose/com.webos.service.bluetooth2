@@ -1547,11 +1547,7 @@ bool BluetoothMeshProfileService::get(LSMessage &message)
 		return true;
 	}
 
-	uint16_t unicastAddress;
-	if (requestObj.hasKey("destAddress"))
-	{
-		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
-	}
+	uint16_t unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
 
 	if(requestObj["subscribe"].asBool())
 	{
@@ -1736,11 +1732,8 @@ bool BluetoothMeshProfileService::set(LSMessage &message)
 		}
 	}
 
-	uint16_t unicastAddress;
-	if (requestObj.hasKey("destAddress"))
-	{
-		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
-	}
+	uint16_t unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
+
 	if(requestObj["subscribe"].asBool())
 	{
 		bool retVal = addSubscription(request, adapterAddress, config, unicastAddress);
@@ -1851,11 +1844,7 @@ bool BluetoothMeshProfileService::getCompositionData(LSMessage &message)
 		return true;
 	}
 
-	uint16_t unicastAddress;
-	if (requestObj.hasKey("destAddress"))
-	{
-		unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
-	}
+	uint16_t unicastAddress = (uint16_t)requestObj["destAddress"].asNumber<int32_t>();
 
 	if(requestObj["subscribe"].asBool())
 	{
