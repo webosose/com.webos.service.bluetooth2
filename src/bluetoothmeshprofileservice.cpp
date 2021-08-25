@@ -241,9 +241,12 @@ void BluetoothMeshProfileService::handleKeyRefreshClientDisappeared(
 					const uint16_t netKeyIndex)
 {
 	auto watchIter = keyRefreshWatch.find(netKeyIndex);
-	BluetoothClientWatch *watch = watchIter->second;
-	delete(watch);
-	keyRefreshWatch.erase(netKeyIndex);
+	if (watchIter != keyRefreshWatch.end())
+	{
+		BluetoothClientWatch *watch = watchIter->second;
+		delete(watch);
+		keyRefreshWatch.erase(netKeyIndex);
+	}
 }
 
 void BluetoothMeshProfileService::removeClientWatch(std::list<BluetoothClientWatch *> *clientWatch,
