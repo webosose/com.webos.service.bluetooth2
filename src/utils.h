@@ -23,6 +23,8 @@
 std::vector<std::string> split(const std::string &s, char delim);
 std::string convertToLower(const std::string &input);
 std::string convertToUpper(const std::string &input);
+std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
+void eraseAllSubStr(std::string & mainStr, const std::string & toErase);
 
 bool checkPathExists(const std::string &path);
 bool checkFileIsValid(const std::string &path);
@@ -31,7 +33,6 @@ bool changeFilePermission(const std::string &permission, const std::string &file
 bool changeFolderPermission(const std::string &permission, const std::string &folderName);
 bool changeFolderGroup(const std::string &groupName, const std::string &folderName);
 bool setGroupID(const std::string &folderName);
-std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
 
 void write_kernel_log(const char *message);
 void bt_ready_msg2kernel(void);

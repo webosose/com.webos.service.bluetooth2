@@ -382,9 +382,13 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 
 	BT_INFO("MESH", 0, "[%s : %d], getConfig: %s srcAddress:%d \n", __FUNCTION__, __LINE__, configuration.getConfig().c_str(), configuration.getNodeAddress());
 
-	std::string key = adapterAddress + configuration.getConfig() + std::to_string(configuration.getNodeAddress());
-
 	std::string config(configuration.getConfig());
+	std::string configSub(configuration.getConfig());
+
+	eraseAllSubStr(configSub, "_SET");
+	eraseAllSubStr(configSub, "_GET");
+
+	std::string key = adapterAddress + configSub + std::to_string(configuration.getNodeAddress());
 
 	auto watch = mModelConfigResultWatch.begin();
 	while (watch != mModelConfigResultWatch.end())
@@ -402,22 +406,15 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 			object.put("returnValue", true);
 			object.put("adapterAddress", adapterAddress);
 
-			if (config == "COMPOSITION_DATA")
-			{
-				object.put("compositionData", appendCompositionData(configuration.getCompositionData()));
-			}
-			else
-				object.put("config", config);
-
-			if (config == "DEFAULT_TTL")
+			if (config == "DEFAULT_TTL_GET")
 			{
 				object.put("ttl", configuration.getTTL());
 			}
-			else if (config == "GATT_PROXY")
+			else if (config == "GATT_PROXY_GET")
 			{
 				object.put("gattProxyState", configuration.getGattProxyState());
 			}
-			else if (config == "RELAY")
+			else if (config == "RELAY_GET")
 			{
 				object.put("relayStatus", appendRelayStatus(configuration.getRelayStatus()));
 			}
@@ -433,6 +430,15 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 			else if (config == "APPKEY_DELETE")
 			{
 				updateAppkeyList(configuration.getNodeAddress(),configuration.getAppKeyIndex(), true);
+			}
+
+			if (config == "COMPOSITION_DATA")
+			{
+				object.put("compositionData", appendCompositionData(configuration.getCompositionData()));
+			}
+			else
+			{
+				object.put("config", configSub);
 			}
 			LSUtils::postToClient((*watch)->getMessage(), object);
 			delete (*watch);
