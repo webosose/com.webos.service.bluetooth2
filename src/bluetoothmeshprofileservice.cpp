@@ -1444,7 +1444,7 @@ bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
 	}
 
 	uint16_t netKeyIndex = 0;
-	uint16_t appKeyIndex = mAppKeyIndex++;
+	uint16_t appKeyIndex = mAppKeyIndex;
 	if (requestObj.hasKey("netKeyIndex"))
 	{
 		netKeyIndex = (uint16_t)requestObj["netKeyIndex"].asNumber<int32_t>();
@@ -1470,9 +1470,9 @@ bool BluetoothMeshProfileService::createAppKey(LSMessage &message)
 		{
 			mAppKeyIndex++;
 		}
+		appKeyIndex = mAppKeyIndex;
 		BT_INFO("MESH", 0, "Next available appkeyindex: %d", mAppKeyIndex);
 	}
-	mAppKeyIndex++;
 
 	std::string bearer = "PB-ADV";
 
@@ -2502,7 +2502,7 @@ std::vector<BleMeshNode> BluetoothMeshProfileService::getProvisionedNodes()
 			pbnjson::JValue appKeyIndexesObj = result["appKeyIndexes"];
 			for (int j = 0; j < appKeyIndexesObj.arraySize(); ++j)
 			{
-				appKeyIndexes.push_back(appKeyIndexesObj[i].asNumber<int32_t>());
+				appKeyIndexes.push_back(appKeyIndexesObj[j].asNumber<int32_t>());
 			}
 			std::string uuid = result["uuid"].asString();
 			BleMeshNode node(uuid,
