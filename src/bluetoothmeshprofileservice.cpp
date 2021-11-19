@@ -828,37 +828,40 @@ bool BluetoothMeshProfileService::provision(LSMessage &message)
 		return true;
 	}
 
-	/* Need not check if the method is subscribed. This method need to be
-	 * subscribed, else schema check will return error
-	 */
-	bool retVal = addClientWatch(request, &mProvResultWatch,
-								 adapterAddress, "");
-	if (!retVal)
+	if (isScanDevicePresent(adapterAddress, requestObj["uuid"].asString()))
 	{
-		LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
-		return true;
-	}
+		/* Need not check if the method is subscribed. This method need to be
+		 * subscribed, else schema check will return error
+		 */
+		bool retVal = addClientWatch(request, &mProvResultWatch,
+									 adapterAddress, "");
+		if (!retVal)
+		{
+			LSUtils::respondWithError(request, BT_ERR_MESSAGE_OWNER_MISSING);
+			return true;
+		}
 
-	std::string bearer = "PB-ADV";
+		std::string bearer = "PB-ADV";
 
-	if (requestObj.hasKey("bearer"))
-	{
-		bearer = requestObj["bearer"].asString();
-	}
+		if (requestObj.hasKey("bearer"))
+		{
+			bearer = requestObj["bearer"].asString();
+		}
 
-	uint16_t timeout = 60;
+		uint16_t timeout = 60;
 
-	if (requestObj.hasKey("timeout"))
-	{
-		timeout = (uint16_t)requestObj["timeout"].asNumber<int32_t>();
-	}
+		if (requestObj.hasKey("timeout"))
+		{
+			timeout = (uint16_t)requestObj["timeout"].asNumber<int32_t>();
+		}
 
-	BluetoothError error = impl->provision(bearer, requestObj["uuid"].asString(), timeout);
+		BluetoothError error = impl->provision(bearer, requestObj["uuid"].asString(), timeout);
 
-	if (BLUETOOTH_ERROR_NONE != error)
-	{
-		LSUtils::respondWithError(request, error);
-		return true;
+		if (BLUETOOTH_ERROR_NONE != error)
+		{
+			LSUtils::respondWithError(request, error);
+			return true;
+		}
 	}
 
 	pbnjson::JValue responseObj = pbnjson::Object();
