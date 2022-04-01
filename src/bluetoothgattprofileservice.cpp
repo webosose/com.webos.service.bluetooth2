@@ -55,11 +55,24 @@ BluetoothGattProfileService::BluetoothGattProfileService(BluetoothManagerService
 	BT_DEBUG("Gatt Service Created");
 }
 
+bool validateClientId(const std::string input)
+{
+	for(int i=0; i < input.size(); i++)
+	{
+		if(input[i] < '0' || input[i] > '9')
+			return false;
+	}
+	return true;
+}
+
 uint16_t idToInt(const std::string input)
 {
 	if(input.empty())
 		return 0;
 
+	if(!validateClientId(input))
+		return 0;
+	
 	std::string::size_type sz;   // alias of size_t
 	return (uint16_t)(std::stoi(input,&sz));
 }
