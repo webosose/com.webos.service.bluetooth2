@@ -18,6 +18,7 @@
 #ifndef BLUETOOTHBINARYSOCKET_H
 #define BLUETOOTHBINARYSOCKET_H
 
+#include <cstdint>
 #include <string>
 #include <functional>
 #include <sys/socket.h>
