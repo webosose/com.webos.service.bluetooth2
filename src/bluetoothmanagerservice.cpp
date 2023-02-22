@@ -151,10 +151,10 @@ BluetoothManagerService::BluetoothManagerService() :
 	LS_CREATE_CATEGORY_END
 
 	LS_CREATE_CATEGORY_BEGIN(BluetoothManagerService, le)
-		LS_CATEGORY_METHOD(configureAdvertisement)
+		/*LS_CATEGORY_METHOD(configureAdvertisement)*/
 		LS_CATEGORY_METHOD(startAdvertising)
 		LS_CATEGORY_METHOD(updateAdvertising)
-		LS_CATEGORY_METHOD(stopAdvertising)
+		/*LS_CATEGORY_METHOD(stopAdvertising)*/
 		LS_CATEGORY_METHOD(disableAdvertising)
 		LS_CATEGORY_MAPPED_METHOD(getStatus, getAdvStatus)
 		LS_CATEGORY_METHOD(startScan)

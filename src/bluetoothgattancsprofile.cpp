@@ -72,7 +72,7 @@ BluetoothGattAncsProfile::BluetoothGattAncsProfile (BluetoothManagerService *man
 		mAncsUuid(BluetoothUuid(ANCS_UUID))
 {
 	LS_CREATE_CLASS_CATEGORY_BEGIN(BluetoothGattAncsProfile, base)
-		LS_CATEGORY_CLASS_METHOD(BluetoothProfileService, connect)
+		/*LS_CATEGORY_CLASS_METHOD(BluetoothProfileService, connect)
 		LS_CATEGORY_CLASS_METHOD(BluetoothProfileService, disconnect)
 		LS_CATEGORY_CLASS_METHOD(BluetoothProfileService, getStatus)
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattAncsProfile, advertise)
@@ -80,7 +80,7 @@ BluetoothGattAncsProfile::BluetoothGattAncsProfile (BluetoothManagerService *man
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattAncsProfile, awaitNotifications)
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattAncsProfile, queryNotificationAttributes)
 		LS_CATEGORY_CLASS_METHOD(BluetoothGattAncsProfile, performNotificationAction)
-		LS_CATEGORY_CLASS_METHOD(BluetoothGattAncsProfile, queryAppAttributes)
+		LS_CATEGORY_CLASS_METHOD(BluetoothGattAncsProfile, queryAppAttributes)*/
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/gatt/ancs", LS_CATEGORY_TABLE_NAME(base),

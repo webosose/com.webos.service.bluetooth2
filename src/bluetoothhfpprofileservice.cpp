@@ -31,13 +31,13 @@ BluetoothHfpProfileService::BluetoothHfpProfileService(BluetoothManagerService *
 		LS_CATEGORY_METHOD(connect)
 		LS_CATEGORY_METHOD(disconnect)
 		LS_CATEGORY_METHOD(getStatus)
-		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, openSCO)
+		/*LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, openSCO)
 		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, closeSCO)
 		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, receiveAT)
 		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, sendResult)
 		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, indicateCall)
 		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, sendAT)
-		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, receiveResult)
+		LS_CATEGORY_CLASS_METHOD(BluetoothHfpProfileService, receiveResult)*/
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/hfp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);

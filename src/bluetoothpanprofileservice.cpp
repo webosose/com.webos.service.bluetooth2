@@ -26,10 +26,10 @@ BluetoothPanProfileService::BluetoothPanProfileService(BluetoothManagerService *
         "00001116-0000-1000-8000-00805f9b34fb")
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
-		LS_CATEGORY_METHOD(connect)
+		/*LS_CATEGORY_METHOD(connect)
 		LS_CATEGORY_METHOD(disconnect)
 		LS_CATEGORY_METHOD(getStatus)
-		LS_CATEGORY_CLASS_METHOD(BluetoothPanProfileService, setTethering)
+		LS_CATEGORY_CLASS_METHOD(BluetoothPanProfileService, setTethering)*/
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/pan", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);

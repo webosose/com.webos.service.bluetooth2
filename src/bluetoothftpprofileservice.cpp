@@ -36,12 +36,12 @@ BluetoothFtpProfileService::BluetoothFtpProfileService(BluetoothManagerService *
 	BluetoothProfileService(manager, "FTP", "00001106-0000-1000-8000-00805f9b34fb")
 {
 	LS_CREATE_CATEGORY_BEGIN(BluetoothProfileService, base)
-		LS_CATEGORY_METHOD(connect)
+		/*LS_CATEGORY_METHOD(connect)
 		LS_CATEGORY_METHOD(disconnect)
 		LS_CATEGORY_METHOD(getStatus)
 		LS_CATEGORY_CLASS_METHOD(BluetoothFtpProfileService, listDirectory)
 		LS_CATEGORY_CLASS_METHOD(BluetoothFtpProfileService, pullFile)
-		LS_CATEGORY_CLASS_METHOD(BluetoothFtpProfileService, pushFile)
+		LS_CATEGORY_CLASS_METHOD(BluetoothFtpProfileService, pushFile)*/
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/ftp", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);

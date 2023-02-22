@@ -46,9 +46,9 @@ BluetoothPbapProfileService::BluetoothPbapProfileService(BluetoothManagerService
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, pullvCard)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, searchPhoneBook)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, pullPhoneBook)
-		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, awaitAccessRequest)
+		/*LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, awaitAccessRequest)
 		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, acceptAccessRequest)
-		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, rejectAccessRequest)
+		LS_CATEGORY_CLASS_METHOD(BluetoothPbapProfileService, rejectAccessRequest)*/
 	LS_CREATE_CATEGORY_END
 
 	manager->registerCategory("/pbap", LS_CATEGORY_TABLE_NAME(base), NULL, NULL);
