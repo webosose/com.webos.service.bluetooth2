@@ -405,7 +405,7 @@ void BluetoothMeshProfileService::modelConfigResult(const std::string &adapterAd
 				return;
 			}
 			pbnjson::JValue object = pbnjson::Object();
-			object.put("subscribed", false);
+			object.put("subscribed", true);
 			object.put("returnValue", true);
 			object.put("adapterAddress", adapterAddress);
 
