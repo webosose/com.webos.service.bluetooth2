@@ -2448,6 +2448,7 @@ void BluetoothMeshProfileService::keyRefreshResult(BluetoothError error,
 		{
 			responseObj.put("status", status);
 			responseObj.put("subscribed", true);
+		        responseObj.put("adapterAddress", adapterAddress);
 			responseObj.put("netKeyIndex", netKeyIndex);
 			responseObj.put("keyRefreshPhase", keyRefreshPhase);
 			responseObj.put("returnValue", true);
