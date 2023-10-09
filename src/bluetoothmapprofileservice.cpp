@@ -24,6 +24,8 @@
 #include "utils.h"
 #include "config.h"
 
+#include <array>
+
 using namespace std::placeholders;
 const std::array<std::pair<std::string,BluetoothMapProperty::Type>,11> filterParam = { std::make_pair("startOffset",BluetoothMapProperty::Type::STARTOFFSET),
 																				std::make_pair("maxCount",BluetoothMapProperty::Type::MAXCOUNT),
