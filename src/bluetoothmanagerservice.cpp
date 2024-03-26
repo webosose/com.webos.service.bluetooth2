@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2021 LG Electronics, Inc.
+// Copyright (c) 2014-2024 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -816,8 +816,14 @@ bool BluetoothManagerService::setPairableState(const std::string &adapterAddress
 			retVal = true;
 		}
 	};
-
-	findAdapterInfo(adapterAddress)->getAdapter()->setAdapterProperty(BluetoothProperty(BluetoothProperty::Type::PAIRABLE, value), pairableCB);
+        if(findAdapterInfo(adapterAddress) && findAdapterInfo(adapterAddress)->getAdapter())
+        {
+	    findAdapterInfo(adapterAddress)->getAdapter()->setAdapterProperty(BluetoothProperty(BluetoothProperty::Type::PAIRABLE, value), pairableCB);
+        }
+        else
+        {
+            BT_DEBUG("Adapter not found for address: %s", adapterAddress.c_str());
+        }
 
 	return retVal;
 }
