@@ -1,4 +1,4 @@
-// Copyright (c) 2020 LG Electronics, Inc.
+// Copyright (c) 2024 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -152,9 +152,18 @@ void BluetoothPdmInterface::assignAdaptersToDisplays(pbnjson::JValue &replyObj)
 
 	if (!mAdapterMap.empty())
 	{
-		std::string touchConfig = "touch " + std::string(CONFIG);
-		system(touchConfig.c_str());
-	}
+                GError *error = NULL;
+                gint exit_status;
+                std::string touchConfig = "touch " + std::string(CONFIG);
+                gchar *touchconfig_copy = g_strdup(touchConfig.c_str());
+                gchar *cmd1[] = {"sh", "-c", touchconfig_copy, NULL};
+                if(!g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error))
+                {
+                    g_printerr("Error executing command: %s\n", error->message);
+                    g_error_free(error);
+                }
+                g_free(touchconfig_copy);
+        }
 
 	for (auto adapterAssigned = mAdapterMap.begin(); adapterAssigned != mAdapterMap.end(); adapterAssigned++)
 	{
@@ -177,9 +186,18 @@ void BluetoothPdmInterface::assignAdaptersToDisplays(pbnjson::JValue &replyObj)
 
 				if (adapterName != adapter->getName())
 				{
-					//clear adapter cache and devices
-					auto removeAdapterPath = "rm -rf /var/lib/bluetooth/" + convertToUpper(adapter->getAddress());
-					system(removeAdapterPath.c_str());
+                                        //clear adapter cache and devices
+                                        GError *error = NULL;
+                                        gint exit_status;
+                                        auto removeAdapterPath = "rm -rf /var/lib/bluetooth/" + convertToUpper(adapter->getAddress());
+                                        gchar *removeAdapterPath_copy = g_strdup(removeAdapterPath.c_str());
+                                        gchar *cmd1[] = {"sh", "-c", removeAdapterPath_copy, NULL};
+                                        if(!g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error))
+                                        {
+                                                g_printerr("Error executing command: %s\n", error->message);
+                                                g_error_free(error);
+                                        }
+                                        g_free(removeAdapterPath_copy);
 					mBluetootManager->findAdapterInfo(adapterAddress)->getAdapter()->setAdapterProperty(BluetoothProperty(BluetoothProperty::Type::ALIAS, adapterName), adapterNameChanged);
 
 					auto enableCallback = [this](BluetoothError error) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2021 LG Electronics, Inc.
+// Copyright (c) 2014-2024 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -163,11 +163,20 @@ bool changeGroup(const std::string &groupName, const std::string &fileName)
 	if (!g_file_test(testfileName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
 		return false;
 
-	std::string command = "chgrp " + groupName + " " + testfileName;
-	auto ret = system(command.c_str());
-	static_cast<void>(ret);
-	return true;
-
+    GError *error = NULL;
+    gint exit_status;
+    std::string command = "chgrp " + groupName + " " + testfileName;
+    gchar *command_copy = g_strdup(command.c_str());
+    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
+    static_cast<void>(ret);
+    if(error != NULL)
+    {
+        g_printerr("Error executing command: %s\n", error->message);
+        g_error_free(error);
+    }
+    g_free(command_copy);
+    return true;
 }
 
 bool changeFilePermission(const std::string &permission, const std::string &fileName)
@@ -183,10 +192,20 @@ bool changeFilePermission(const std::string &permission, const std::string &file
 	if (!g_file_test(testfileName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
 		return false;
 
-	std::string command = "chmod " + permission + " " + testfileName;
-	auto ret = system(command.c_str());
-	static_cast<void>(ret);
-	return true;
+    GError *error = NULL;
+    gint exit_status;
+    std::string command = "chmod " + permission + " " + testfileName;
+    gchar *command_copy = g_strdup(command.c_str());
+    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
+    static_cast<void>(ret);
+    if(error != NULL)
+    {
+        g_printerr("Error executing command: %s\n", error->message);
+        g_error_free(error);
+    }
+    g_free(command_copy);
+    return true;
 }
 
 bool changeFolderPermission(const std::string &permission, const std::string &folderName)
@@ -202,10 +221,20 @@ bool changeFolderPermission(const std::string &permission, const std::string &fo
 	if (!g_file_test(testfolderName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
 		return false;
 
-	std::string command = "chmod -R " + permission + " " + testfolderName;
-	auto ret = system(command.c_str());
-	static_cast<void>(ret);
-	return true;
+    GError *error = NULL;
+    gint exit_status;
+    std::string command = "chmod -R " + permission + " " + testfolderName;
+    gchar *command_copy = g_strdup(command.c_str());
+    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
+    static_cast<void>(ret);
+    if(error != NULL)
+    {
+        g_printerr("Error executing command: %s\n", error->message);
+        g_error_free(error);
+    }
+    g_free(command_copy);
+    return true;
 }
 
 bool changeFolderGroup(const std::string &groupName, const std::string &folderName)
@@ -221,11 +250,20 @@ bool changeFolderGroup(const std::string &groupName, const std::string &folderNa
 	if (!g_file_test(testfolderName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
 		return false;
 
-	std::string command = "chgrp -R " + groupName + " " + testfolderName;
-	auto ret = system(command.c_str());
-	static_cast<void>(ret);
-	return true;
-
+    GError *error = NULL;
+    gint exit_status;
+    std::string command = "chgrp -R " + groupName + " " + testfolderName;
+    gchar *command_copy = g_strdup(command.c_str());
+    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
+    static_cast<void>(ret);
+    if(error != NULL)
+    {
+        g_printerr("Error executing command: %s\n", error->message);
+        g_error_free(error);
+    }
+    g_free(command_copy);
+    return true;
 }
 
 /*all new files and subdirectories created within
@@ -244,10 +282,20 @@ bool setGroupID(const std::string &folderName)
 	if (!g_file_test(testfolderName.c_str(), (GFileTest)(G_FILE_TEST_EXISTS | G_FILE_TEST_IS_REGULAR)))
 		return false;
 
-	std::string command = "chmod g+s " + testfolderName;
-	auto ret = system(command.c_str());
-	static_cast<void>(ret);
-	return true;
+    GError *error = NULL;
+    gint exit_status;
+    std::string command = "chmod g+s " + testfolderName;
+    gchar *command_copy = g_strdup(command.c_str());
+    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
+    static_cast<void>(ret);
+    if(error != NULL)
+    {
+        g_printerr("Error executing command: %s\n", error->message);
+        g_error_free(error);
+    }
+    g_free(command_copy);
+    return true;
 }
 
 void eraseAllSubStr(std::string & mainStr, const std::string & toErase)
