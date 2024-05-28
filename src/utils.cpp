@@ -167,7 +167,9 @@ bool changeGroup(const std::string &groupName, const std::string &fileName)
     gint exit_status;
     std::string command = "chgrp " + groupName + " " + testfileName;
     gchar *command_copy = g_strdup(command.c_str());
-    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    gchar sh[] = "sh";
+    gchar c[] = "-c";
+    gchar *cmd1[] = {sh, c, command_copy, NULL};
     auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
     static_cast<void>(ret);
     if(error != NULL)
@@ -196,7 +198,9 @@ bool changeFilePermission(const std::string &permission, const std::string &file
     gint exit_status;
     std::string command = "chmod " + permission + " " + testfileName;
     gchar *command_copy = g_strdup(command.c_str());
-    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    gchar sh[] = "sh";
+    gchar c[] = "-c";
+    gchar *cmd1[] = {sh, c, command_copy, NULL};
     auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
     static_cast<void>(ret);
     if(error != NULL)
@@ -225,7 +229,9 @@ bool changeFolderPermission(const std::string &permission, const std::string &fo
     gint exit_status;
     std::string command = "chmod -R " + permission + " " + testfolderName;
     gchar *command_copy = g_strdup(command.c_str());
-    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    gchar sh[] = "sh";
+    gchar c[] = "-c";
+    gchar *cmd1[] = {sh, c, command_copy, NULL};
     auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
     static_cast<void>(ret);
     if(error != NULL)
@@ -254,7 +260,9 @@ bool changeFolderGroup(const std::string &groupName, const std::string &folderNa
     gint exit_status;
     std::string command = "chgrp -R " + groupName + " " + testfolderName;
     gchar *command_copy = g_strdup(command.c_str());
-    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    gchar sh[] = "sh";
+    gchar c[] = "-c";
+    gchar *cmd1[] = {sh, c, command_copy, NULL};
     auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
     static_cast<void>(ret);
     if(error != NULL)
@@ -286,7 +294,9 @@ bool setGroupID(const std::string &folderName)
     gint exit_status;
     std::string command = "chmod g+s " + testfolderName;
     gchar *command_copy = g_strdup(command.c_str());
-    gchar *cmd1[] = {"sh", "-c", command_copy, NULL};
+    gchar sh[] = "sh";
+    gchar c[] = "-c";
+    gchar *cmd1[] = {sh, c, command_copy, NULL};
     auto ret = g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error);
     static_cast<void>(ret);
     if(error != NULL)

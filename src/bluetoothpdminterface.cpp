@@ -156,7 +156,9 @@ void BluetoothPdmInterface::assignAdaptersToDisplays(pbnjson::JValue &replyObj)
                 gint exit_status;
                 std::string touchConfig = "touch " + std::string(CONFIG);
                 gchar *touchconfig_copy = g_strdup(touchConfig.c_str());
-                gchar *cmd1[] = {"sh", "-c", touchconfig_copy, NULL};
+                gchar sh[] = "sh";
+                gchar c[] = "-c";
+                gchar *cmd1[] = {sh, c, touchconfig_copy, NULL};
                 if(!g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error))
                 {
                     g_printerr("Error executing command: %s\n", error->message);
@@ -191,7 +193,9 @@ void BluetoothPdmInterface::assignAdaptersToDisplays(pbnjson::JValue &replyObj)
                                         gint exit_status;
                                         auto removeAdapterPath = "rm -rf /var/lib/bluetooth/" + convertToUpper(adapter->getAddress());
                                         gchar *removeAdapterPath_copy = g_strdup(removeAdapterPath.c_str());
-                                        gchar *cmd1[] = {"sh", "-c", removeAdapterPath_copy, NULL};
+                                        gchar sh[] = "sh";
+                                        gchar c[] = "-c";
+                                        gchar *cmd1[] = {sh, c, removeAdapterPath_copy, NULL};
                                         if(!g_spawn_sync(NULL, cmd1, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,NULL, NULL,&exit_status,&error))
                                         {
                                                 g_printerr("Error executing command: %s\n", error->message);
