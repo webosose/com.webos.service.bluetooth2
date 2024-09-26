@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2020 LG Electronics, Inc.
+// Copyright (c) 2015-2024 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -834,7 +834,10 @@ void BluetoothSppProfileService::enableBinarySocket(const std::string &adapterAd
 		mBinarySockets.insert(std::pair<std::string, BluetoothBinarySocket*>(channelId, binarySocket));
 	}
 	else
-		delete binarySocket;
+        {
+                binarySocket->removeBinarySocket();
+                delete binarySocket;
+        }
 }
 
 void BluetoothSppProfileService::disableBinarySocket(const std::string &channelId)

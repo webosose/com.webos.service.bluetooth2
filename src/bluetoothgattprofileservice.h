@@ -536,6 +536,7 @@ private:
 	std::unordered_map<std::string, bool> mDiscoveringServices;
 	std::vector<CharacteristicWatch*> mCharacteristicWatchList;
 	std::vector<BluetoothGattProfileService *> mGattObservers;
+	std::vector<LocalService*> mLocalServices;
 	std::unordered_map<std::string, std::unordered_map<std::string, uint16_t>> mConnectedDevicesMap;
 	std::map<std::string, std::map<std::string, std::pair<LS::SubscriptionPoint*, GattConnSubsInfo*>>> mConnectSubsMap;
 	std::map<std::string, std::map<std::string, std::pair<LS::SubscriptionPoint*, GattStatusSubsInfo*>>> mGetStatusSubsMap;

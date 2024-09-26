@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2021 LG Electronics, Inc.
+// Copyright (c) 2015-2024 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -91,6 +91,11 @@ std::string idToString(const uint16_t input)
 
 BluetoothGattProfileService::~BluetoothGattProfileService()
 {
+	for(auto it = mLocalServices.begin(); it != mLocalServices.end(); ++it)
+        {
+                delete *it;
+        }
+        mLocalServices.clear();
 }
 
 BluetoothGattProfileService::BluetoothGattProfileService(BluetoothManagerService *manager, const std::string &name, const std::string &uuid):
@@ -3221,6 +3226,7 @@ void BluetoothGattProfileService::addLocalService(const BluetoothUuid applicatio
 	BT_DEBUG("[%s](%d) getImpl->addService server:%d service:%s\n", __FUNCTION__, __LINE__, server->id, service.getUuid().toString().c_str());
 	// TODO: Needs server_if, uuid, handles, primary
 	getImpl<BluetoothGattProfile>(adapterAddress)->addService(server->id, service, addServiceCallback);
+	 mLocalServices.push_back(newService);
 }
 
 void BluetoothGattProfileService::initCharacteristic(LocalService* newService)
