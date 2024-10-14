@@ -2513,7 +2513,7 @@ std::vector<BleMeshNode> BluetoothMeshProfileService::getProvisionedNodes()
 				result["unicastAddress"].asNumber<int32_t>(),
 				result["count"].asNumber<int32_t>(),
 				result["netKeyIndex"].asNumber<int32_t>(), appKeyIndexes);
-			meshNodes.push_back(node);
+			meshNodes.push_back(std::move(node));
 		}
 	}
 	return meshNodes;

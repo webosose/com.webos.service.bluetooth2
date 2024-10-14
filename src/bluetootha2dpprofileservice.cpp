@@ -660,7 +660,7 @@ void BluetoothA2dpProfileService::delayReportChanged(const std::string &adapterA
 	if (it == mRemoteDelay.end())
 	{
 		std::pair<std::string, uint16_t> item (address, delay);
-		mRemoteDelay.insert(item);
+		mRemoteDelay.insert(std::move(item));
 	}
 	else
 	{
